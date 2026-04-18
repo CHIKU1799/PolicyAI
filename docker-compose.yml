@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: policyai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-policyai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-policyai}
+      POSTGRES_DB: ${POSTGRES_DB:-policyai}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-policyai} -d ${POSTGRES_DB:-policyai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+    name: policyai_postgres_data

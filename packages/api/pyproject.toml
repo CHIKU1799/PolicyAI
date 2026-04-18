@@ -1,0 +1,22 @@
+[project]
+name = "policyai-api"
+version = "0.1.0"
+description = "FastAPI service exposing the PolicyAI knowledge graph"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "policyai-graph",
+    "policyai-extraction",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/policyai_api"]
+
+[tool.uv.sources]
+policyai-graph = { workspace = true }
+policyai-extraction = { workspace = true }

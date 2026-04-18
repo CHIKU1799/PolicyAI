@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+dist/
+build/
+
+# --- uv ---
+# uv.lock should be committed; keep it. Ignore uv's cache.
+.uv-cache/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+.turbo/
+out/
+next-env.d.ts
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / OS ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Data & logs ---
+data/
+logs/
+*.log
