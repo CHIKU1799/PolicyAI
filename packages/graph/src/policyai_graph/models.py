@@ -108,8 +108,7 @@ class Edge(Base):
 
     def __repr__(self) -> str:
         return (
-            f"Edge(type={self.edge_type!r}, "
-            f"source={self.source_id}, target={self.target_id})"
+            f"Edge(type={self.edge_type!r}, " f"source={self.source_id}, target={self.target_id})"
         )
 
 
@@ -134,9 +133,7 @@ class RawDocument(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("source", "source_id", name="uq_raw_document_source_id"),
-    )
+    __table_args__ = (UniqueConstraint("source", "source_id", name="uq_raw_document_source_id"),)
 
     def __repr__(self) -> str:
         return f"RawDocument(source={self.source!r}, id={self.source_id!r})"

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from policyai_graph.models import Edge, EdgeType, Node, NodeType
 from policyai_graph.seed import ENTITY_CLASSES, PARENT_ACTS, REGULATORS, seed
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio
@@ -38,12 +37,16 @@ async def test_regulator_departments_linked_to_parent(session: AsyncSession) -> 
     ).scalar_one()
 
     dept_edges = (
-        await session.execute(
-            select(Edge).where(
-                Edge.target_id == rbi.id, Edge.edge_type == EdgeType.ISSUED_BY.value
+        (
+            await session.execute(
+                select(Edge).where(
+                    Edge.target_id == rbi.id, Edge.edge_type == EdgeType.ISSUED_BY.value
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     rbi_dept_count = sum(1 for r in REGULATORS if r["canonical_key"] == "rbi") * len(
         next(r["departments"] for r in REGULATORS if r["canonical_key"] == "rbi")

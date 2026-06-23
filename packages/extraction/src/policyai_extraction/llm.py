@@ -1,0 +1,270 @@
+"""Single LLM entry point — one client, retries, cost tracking, two providers.
+
+Every LLM call in PolicyAI goes through here. Set ``LLM_PROVIDER``:
+
+  - ``anthropic`` (default) : Claude. extraction -> sonnet, mapping -> opus.
+  - ``openai_compatible``   : any OpenAI-compatible chat endpoint, so the whole
+    pipeline can run on OPEN-SOURCE models from Hugging Face (or Groq / Together /
+    Ollama) for free. Set:
+        LLM_PROVIDER=openai_compatible
+        OPENAI_BASE_URL=https://router.huggingface.co/v1   # HF Inference Providers
+        OPENAI_API_KEY=<your HF token>                     # or Groq/Together key
+        LLM_MODEL=meta-llama/Llama-3.3-70B-Instruct        # tool-calling open model
+
+Structured extraction uses *forced tool/function calling* on both providers, then
+validates the arguments against a Pydantic model — so extraction, obligation
+mapping, and the Ask agent all work unchanged on open models.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import TypeVar
+
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
+
+# USD per 1M tokens, (input, output). Open-model providers default to 0 (free/unknown).
+PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+MODEL_EXTRACTION = os.getenv("ANTHROPIC_MODEL_EXTRACTION", "claude-sonnet-4-6")
+MODEL_MAPPING = os.getenv("ANTHROPIC_MODEL_MAPPING", "claude-opus-4-8")
+
+# Open-source / OpenAI-compatible config (used when LLM_PROVIDER=openai_compatible).
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://router.huggingface.co/v1")
+OPENAI_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+
+
+@dataclass
+class CostTracker:
+    """Running total of token spend across a process (e.g. one crawl + map run)."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    calls: int = 0
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def record(self, model: str, in_tok: int, out_tok: int) -> None:
+        self.input_tokens += in_tok
+        self.output_tokens += out_tok
+        self.calls += 1
+        bucket = self.by_model.setdefault(model, {"input": 0, "output": 0, "calls": 0})
+        bucket["input"] += in_tok
+        bucket["output"] += out_tok
+        bucket["calls"] += 1
+
+    @property
+    def usd(self) -> float:
+        total = 0.0
+        for model, b in self.by_model.items():
+            in_rate, out_rate = PRICING.get(model, (0.0, 0.0))
+            total += b["input"] / 1_000_000 * in_rate + b["output"] / 1_000_000 * out_rate
+        return round(total, 4)
+
+    def summary(self) -> str:
+        return (
+            f"{self.calls} calls, {self.input_tokens} in / {self.output_tokens} out "
+            f"tokens, ${self.usd}"
+        )
+
+
+def _to_openai_tool(name: str, description: str, schema: dict) -> dict:
+    return {
+        "type": "function",
+        "function": {"name": name, "description": description, "parameters": schema},
+    }
+
+
+class LLMClient:
+    """One async client with a provider switch. Public methods are identical
+    across providers so callers (pipeline, mapping, agent) never branch."""
+
+    def __init__(self, *, max_retries: int = 4) -> None:
+        self.provider = LLM_PROVIDER
+        self.cost = CostTracker()
+        if self.provider == "openai_compatible":
+            from openai import AsyncOpenAI
+
+            self._oai = AsyncOpenAI(
+                base_url=OPENAI_BASE_URL,
+                api_key=os.getenv("OPENAI_API_KEY") or os.getenv("HF_API_TOKEN", ""),
+                max_retries=max_retries,
+            )
+            self._model = OPENAI_MODEL
+        else:
+            from anthropic import AsyncAnthropic
+
+            self._client = AsyncAnthropic(
+                api_key=os.getenv("ANTHROPIC_API_KEY"), max_retries=max_retries
+            )
+
+    # ---- text completion --------------------------------------------------
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        model: str = MODEL_EXTRACTION,
+        max_tokens: int = 4096,
+        thinking: bool = False,
+        effort: str | None = None,
+    ) -> str:
+        if self.provider == "openai_compatible":
+            messages = ([{"role": "system", "content": system}] if system else []) + [
+                {"role": "user", "content": prompt}
+            ]
+            resp = await self._oai.chat.completions.create(
+                model=self._model, max_tokens=max_tokens, messages=messages
+            )
+            self._record_openai(resp)
+            return resp.choices[0].message.content or ""
+
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            kwargs["system"] = system
+        if thinking:
+            kwargs["thinking"] = {"type": "adaptive"}
+        if effort:
+            kwargs["output_config"] = {"effort": effort}
+        resp = await self._client.messages.create(**kwargs)
+        self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+        return "".join(b.text for b in resp.content if b.type == "text")
+
+    # ---- structured extraction (forced tool/function call) ----------------
+    async def extract(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        system: str | None = None,
+        model: str = MODEL_EXTRACTION,
+        max_tokens: int = 8192,
+        tool_name: str = "record",
+        tool_description: str | None = None,
+    ) -> T:
+        description = tool_description or f"Record the extracted {schema.__name__}."
+        if self.provider == "openai_compatible":
+            messages = ([{"role": "system", "content": system}] if system else []) + [
+                {"role": "user", "content": prompt}
+            ]
+            resp = await self._oai.chat.completions.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                messages=messages,
+                tools=[_to_openai_tool(tool_name, description, schema.model_json_schema())],
+                tool_choice={"type": "function", "function": {"name": tool_name}},
+            )
+            self._record_openai(resp)
+            calls = resp.choices[0].message.tool_calls or []
+            if not calls:
+                raise ValueError(f"Model did not return a '{tool_name}' function call")
+            return schema.model_validate_json(calls[0].function.arguments)
+
+        tool = {
+            "name": tool_name,
+            "description": description,
+            "input_schema": schema.model_json_schema(),
+        }
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "tools": [tool],
+            "tool_choice": {"type": "tool", "name": tool_name},
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            kwargs["system"] = system
+        resp = await self._client.messages.create(**kwargs)
+        self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+        for block in resp.content:
+            if block.type == "tool_use" and block.name == tool_name:
+                return schema.model_validate(block.input)
+        raise ValueError(f"Model did not return a '{tool_name}' tool call")
+
+    # ---- agentic tool-use loop (the Ask agent) ----------------------------
+    async def converse_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+        tool_runner,
+        model: str = MODEL_MAPPING,
+        max_tokens: int = 4096,
+        max_iters: int = 6,
+    ) -> str:
+        if self.provider == "openai_compatible":
+            return await self._converse_openai(
+                system, messages, tools, tool_runner, max_tokens, max_iters
+            )
+        for _ in range(max_iters):
+            resp = await self._client.messages.create(
+                model=model, max_tokens=max_tokens, system=system, tools=tools, messages=messages
+            )
+            self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+            if resp.stop_reason != "tool_use":
+                return "".join(b.text for b in resp.content if b.type == "text")
+            messages.append({"role": "assistant", "content": resp.content})
+            results = []
+            for block in resp.content:
+                if block.type == "tool_use":
+                    output = await tool_runner(block.name, block.input)
+                    results.append(
+                        {"type": "tool_result", "tool_use_id": block.id, "content": output}
+                    )
+            messages.append({"role": "user", "content": results})
+        return "".join(b.text for b in resp.content if b.type == "text")
+
+    async def _converse_openai(
+        self, system, messages, tools, tool_runner, max_tokens, max_iters
+    ) -> str:
+        oai_tools = [
+            _to_openai_tool(t["name"], t.get("description", ""), t["input_schema"]) for t in tools
+        ]
+        oai_messages = [{"role": "system", "content": system}] + list(messages)
+        for _ in range(max_iters):
+            resp = await self._oai.chat.completions.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                messages=oai_messages,
+                tools=oai_tools,
+                tool_choice="auto",
+            )
+            self._record_openai(resp)
+            msg = resp.choices[0].message
+            if not msg.tool_calls:
+                return msg.content or ""
+            oai_messages.append(msg.model_dump(exclude_none=True))
+            for tc in msg.tool_calls:
+                args = json.loads(tc.function.arguments or "{}")
+                output = await tool_runner(tc.function.name, args)
+                oai_messages.append({"role": "tool", "tool_call_id": tc.id, "content": output})
+        return ""
+
+    def _record_openai(self, resp) -> None:
+        usage = getattr(resp, "usage", None)
+        if usage:
+            self.cost.record(
+                self._model,
+                getattr(usage, "prompt_tokens", 0) or 0,
+                getattr(usage, "completion_tokens", 0) or 0,
+            )
+
+    async def aclose(self) -> None:
+        if self.provider == "openai_compatible":
+            await self._oai.close()
+        else:
+            await self._client.close()

@@ -1,0 +1,43 @@
+# Render blueprint for the PolicyAI worker tier.
+# Vercel hosts the Next.js frontend; Supabase hosts Postgres/Storage/Realtime.
+# This file defines the two things that cannot run on Vercel serverless:
+#   1. policyai-worker  — the always-on FastAPI service (doc processing, mapping,
+#                         graph subgraph, internal hooks)
+#   2. policyai-crawler — the scheduled Playwright crawl of the 4 regulators
+#
+# Both run the same Python image. Secrets are set in the Render dashboard
+# (env group `policyai`), never committed.
+
+services:
+  - type: web
+    name: policyai-worker
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    buildCommand: |
+      pip install uv && uv sync --frozen
+      uv run playwright install --with-deps chromium
+    startCommand: uv run uvicorn policyai_api.main:app --host 0.0.0.0 --port $PORT
+    # /ready verifies DB connectivity (503 if the DB is unreachable); /health is
+    # bare liveness. Point Render at /ready once DATABASE_URL is set.
+    healthCheckPath: /ready
+    envVars:
+      - fromGroup: policyai
+
+jobs:
+  - type: cron
+    name: policyai-crawler
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    # Every 6 hours. Per-source cadence is enforced inside the runner using
+    # MonitoringSource.cadence_hours + last_scanned_at.
+    schedule: "0 */6 * * *"
+    buildCommand: |
+      pip install uv && uv sync --frozen
+      uv run playwright install --with-deps chromium
+    startCommand: uv run python -m policyai_scrapers.runner
+    envVars:
+      - fromGroup: policyai

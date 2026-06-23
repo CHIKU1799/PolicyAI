@@ -4,11 +4,10 @@ import hashlib
 from datetime import date
 
 import pytest
+from policyai_graph.models import EMBEDDING_DIM, Edge, EdgeType, Node, NodeType, RawDocument
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from policyai_graph.models import EMBEDDING_DIM, Edge, EdgeType, Node, NodeType, RawDocument
 
 
 @pytest.mark.asyncio
@@ -21,9 +20,7 @@ async def test_create_and_query_node(session: AsyncSession) -> None:
     await session.commit()
     await session.refresh(node)
 
-    fetched = (
-        await session.execute(select(Node).where(Node.id == node.id))
-    ).scalar_one()
+    fetched = (await session.execute(select(Node).where(Node.id == node.id))).scalar_one()
     assert fetched.node_type == "regulator"
     assert fetched.properties["short_name"] == "RBI"
     assert fetched.created_at is not None
@@ -34,9 +31,7 @@ async def test_jsonb_property_path_query(session: AsyncSession) -> None:
     session.add_all(
         [
             Node(node_type=NodeType.ENTITY_CLASS.value, properties={"canonical_key": "nbfc"}),
-            Node(
-                node_type=NodeType.ENTITY_CLASS.value, properties={"canonical_key": "nbfc_mfi"}
-            ),
+            Node(node_type=NodeType.ENTITY_CLASS.value, properties={"canonical_key": "nbfc_mfi"}),
             Node(node_type=NodeType.REGULATOR.value, properties={"canonical_key": "rbi"}),
         ]
     )
@@ -60,9 +55,7 @@ async def test_create_edge_between_nodes(session: AsyncSession) -> None:
     session.add_all([circular, regulator])
     await session.flush()
 
-    edge = Edge(
-        source_id=circular.id, target_id=regulator.id, edge_type=EdgeType.ISSUED_BY.value
-    )
+    edge = Edge(source_id=circular.id, target_id=regulator.id, edge_type=EdgeType.ISSUED_BY.value)
     session.add(edge)
     await session.commit()
 

@@ -7,10 +7,9 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from policyai_graph.db import make_engine, make_sessionmaker
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
-
-from policyai_graph.db import make_engine, make_sessionmaker
 
 GRAPH_PKG_ROOT = Path(__file__).resolve().parent.parent
 
@@ -61,5 +60,9 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         yield s
     async with engine.begin() as conn:
         await conn.execute(
-            text("TRUNCATE TABLE raw_documents, edges, nodes RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE TABLE alerts, tasks, obligations, company_profiles, "
+                "company_documents, scan_runs, monitoring_sources, "
+                "raw_documents, edges, nodes RESTART IDENTITY CASCADE"
+            )
         )

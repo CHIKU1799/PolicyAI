@@ -19,8 +19,7 @@ async def test_all_tables_exist(engine: AsyncEngine) -> None:
     async with engine.connect() as conn:
         result = await conn.execute(
             text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' ORDER BY tablename"
+                "SELECT tablename FROM pg_tables " "WHERE schemaname = 'public' ORDER BY tablename"
             )
         )
         tables = {row[0] for row in result}
@@ -75,9 +74,6 @@ async def test_hnsw_index_on_raw_document_embedding(engine: AsyncEngine) -> None
 async def test_edge_unique_triple_constraint(engine: AsyncEngine) -> None:
     async with engine.connect() as conn:
         result = await conn.execute(
-            text(
-                "SELECT conname FROM pg_constraint "
-                "WHERE conname = 'uq_edge_triple'"
-            )
+            text("SELECT conname FROM pg_constraint " "WHERE conname = 'uq_edge_triple'")
         )
         assert result.scalar_one() == "uq_edge_triple"

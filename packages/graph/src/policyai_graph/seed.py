@@ -3,6 +3,7 @@
 Idempotent: re-running will not duplicate rows. Uses the `canonical_key` property
 on each node as the deduplication identity.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_graph.db import make_engine, make_sessionmaker
-from policyai_graph.models import Edge, EdgeType, Node, NodeType
+from policyai_graph.graph_ops import get_or_create_edge as _get_or_create_edge
+from policyai_graph.graph_ops import get_or_create_node as _get_or_create_node
+from policyai_graph.models import EdgeType, Node, NodeType
+from policyai_graph.models_app import MonitoringSource
 
 REGULATORS: list[dict] = [
     {
@@ -82,6 +86,67 @@ REGULATORS: list[dict] = [
             },
         ],
     },
+    {
+        "canonical_key": "irdai",
+        "name": "Insurance Regulatory and Development Authority of India",
+        "short_name": "IRDAI",
+        "kind": "insurance_regulator",
+        "departments": [
+            {
+                "canonical_key": "irdai.life",
+                "name": "Life Insurance Department",
+                "short_name": "Life",
+            },
+            {
+                "canonical_key": "irdai.nonlife",
+                "name": "Non-Life Insurance Department",
+                "short_name": "Non-Life",
+            },
+            {
+                "canonical_key": "irdai.health",
+                "name": "Health Insurance Department",
+                "short_name": "Health",
+            },
+            {
+                "canonical_key": "irdai.dist",
+                "name": "Distribution Department",
+                "short_name": "Distribution",
+            },
+            {
+                "canonical_key": "irdai.inv",
+                "name": "Investment Department",
+                "short_name": "Investment",
+            },
+            {
+                "canonical_key": "irdai.actuarial",
+                "name": "Actuarial Department",
+                "short_name": "Actuarial",
+            },
+        ],
+    },
+    {
+        "canonical_key": "mca",
+        "name": "Ministry of Corporate Affairs",
+        "short_name": "MCA",
+        "kind": "ministry",
+        "departments": [
+            {
+                "canonical_key": "mca.roc",
+                "name": "Registrar of Companies",
+                "short_name": "RoC",
+            },
+            {
+                "canonical_key": "mca.iepfa",
+                "name": "Investor Education and Protection Fund Authority",
+                "short_name": "IEPFA",
+            },
+            {
+                "canonical_key": "mca.nfra",
+                "name": "National Financial Reporting Authority",
+                "short_name": "NFRA",
+            },
+        ],
+    },
 ]
 
 ENTITY_CLASSES: list[dict] = [
@@ -112,7 +177,30 @@ ENTITY_CLASSES: list[dict] = [
     {"canonical_key": "amc", "name": "Asset Management Company", "regulator": "sebi"},
     {"canonical_key": "fpi", "name": "Foreign Portfolio Investor", "regulator": "sebi"},
     {"canonical_key": "stock_broker", "name": "Stock Broker", "regulator": "sebi"},
-    {"canonical_key": "depository_participant", "name": "Depository Participant", "regulator": "sebi"},
+    {
+        "canonical_key": "depository_participant",
+        "name": "Depository Participant",
+        "regulator": "sebi",
+    },
+    {"canonical_key": "life_insurer", "name": "Life Insurer", "regulator": "irdai"},
+    {"canonical_key": "general_insurer", "name": "General Insurer", "regulator": "irdai"},
+    {"canonical_key": "health_insurer", "name": "Standalone Health Insurer", "regulator": "irdai"},
+    {"canonical_key": "reinsurer", "name": "Reinsurer", "regulator": "irdai"},
+    {"canonical_key": "insurance_broker", "name": "Insurance Broker", "regulator": "irdai"},
+    {"canonical_key": "corporate_agent", "name": "Corporate Agent", "regulator": "irdai"},
+    {
+        "canonical_key": "insurance_web_aggregator",
+        "name": "Insurance Web Aggregator",
+        "regulator": "irdai",
+    },
+    {"canonical_key": "tpa", "name": "Third Party Administrator", "regulator": "irdai"},
+    {"canonical_key": "private_company", "name": "Private Limited Company", "regulator": "mca"},
+    {"canonical_key": "public_company", "name": "Public Limited Company", "regulator": "mca"},
+    {"canonical_key": "llp", "name": "Limited Liability Partnership", "regulator": "mca"},
+    {"canonical_key": "opc", "name": "One Person Company", "regulator": "mca"},
+    {"canonical_key": "nidhi", "name": "Nidhi Company", "regulator": "mca"},
+    {"canonical_key": "producer_company", "name": "Producer Company", "regulator": "mca"},
+    {"canonical_key": "section_8_company", "name": "Section 8 Company", "regulator": "mca"},
 ]
 
 PARENT_ACTS: list[dict] = [
@@ -146,54 +234,96 @@ PARENT_ACTS: list[dict] = [
         "year": 2007,
         "anchors_regulator": "rbi",
     },
+    {
+        "canonical_key": "insurance_act_1938",
+        "name": "Insurance Act, 1938",
+        "year": 1938,
+        "anchors_regulator": "irdai",
+    },
+    {
+        "canonical_key": "irda_act_1999",
+        "name": "Insurance Regulatory and Development Authority Act, 1999",
+        "year": 1999,
+        "anchors_regulator": "irdai",
+    },
+    {
+        "canonical_key": "companies_act_2013",
+        "name": "Companies Act, 2013",
+        "year": 2013,
+        "anchors_regulator": "mca",
+    },
+    {
+        "canonical_key": "llp_act_2008",
+        "name": "Limited Liability Partnership Act, 2008",
+        "year": 2008,
+        "anchors_regulator": "mca",
+    },
+]
+
+# Crawl targets for the monitoring agent. ``scraper_kind`` selects the scraper
+# implementation in ``policyai_scrapers``; cadence is hours between crawls.
+MONITORING_SOURCES: list[dict] = [
+    {
+        "regulator_key": "rbi",
+        "name": "RBI — Notifications",
+        "base_url": "https://www.rbi.org.in/Scripts/NotificationUser.aspx",
+        "scraper_kind": "rbi_notifications",
+        "cadence_hours": 6,
+    },
+    {
+        "regulator_key": "sebi",
+        "name": "SEBI — Master Circulars",
+        "base_url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=6&smid=0",
+        "scraper_kind": "sebi_circulars",
+        "cadence_hours": 6,
+    },
+    {
+        "regulator_key": "sebi",
+        "name": "SEBI — Circulars",
+        "base_url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=7&smid=0",
+        "scraper_kind": "sebi_general_circulars",
+        "cadence_hours": 6,
+    },
+    {
+        "regulator_key": "irdai",
+        "name": "IRDAI — Circulars",
+        "base_url": "https://irdai.gov.in/circulars",
+        "scraper_kind": "irdai_circulars",
+        "cadence_hours": 12,
+    },
+    {
+        "regulator_key": "mca",
+        "name": "MCA — Notifications",
+        "base_url": "https://www.mca.gov.in/content/mca/global/en/acts-rules-prospect/notifications.html",
+        "scraper_kind": "mca_notifications",
+        "cadence_hours": 24,
+        # MCA sits behind Akamai bot protection (403 even for a real headless
+        # browser). Disabled until a stealth/proxy fetch path is added, so it
+        # doesn't fail every scan. RBI/SEBI/IRDAI run normally.
+        "enabled": False,
+    },
 ]
 
 
-async def _get_or_create_node(
-    session: AsyncSession,
-    *,
-    node_type: NodeType,
-    canonical_key: str,
-    properties: dict,
-) -> Node:
-    stmt = select(Node).where(
-        Node.node_type == node_type.value,
-        Node.properties["canonical_key"].astext == canonical_key,
+async def _get_or_create_monitoring_source(session: AsyncSession, spec: dict) -> MonitoringSource:
+    stmt = select(MonitoringSource).where(
+        MonitoringSource.regulator_key == spec["regulator_key"],
+        MonitoringSource.scraper_kind == spec["scraper_kind"],
     )
     existing = (await session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
         return existing
-    node = Node(node_type=node_type.value, properties=properties)
-    session.add(node)
-    await session.flush()
-    return node
-
-
-async def _get_or_create_edge(
-    session: AsyncSession,
-    *,
-    source: Node,
-    target: Node,
-    edge_type: EdgeType,
-    properties: dict | None = None,
-) -> Edge:
-    stmt = select(Edge).where(
-        Edge.source_id == source.id,
-        Edge.target_id == target.id,
-        Edge.edge_type == edge_type.value,
+    source = MonitoringSource(
+        regulator_key=spec["regulator_key"],
+        name=spec["name"],
+        base_url=spec["base_url"],
+        scraper_kind=spec["scraper_kind"],
+        cadence_hours=spec["cadence_hours"],
+        enabled=spec.get("enabled", True),
     )
-    existing = (await session.execute(stmt)).scalar_one_or_none()
-    if existing is not None:
-        return existing
-    edge = Edge(
-        source_id=source.id,
-        target_id=target.id,
-        edge_type=edge_type.value,
-        properties=properties or {},
-    )
-    session.add(edge)
+    session.add(source)
     await session.flush()
-    return edge
+    return source
 
 
 async def seed(session: AsyncSession) -> dict[str, int]:
@@ -265,14 +395,17 @@ async def seed(session: AsyncSession) -> dict[str, int]:
             session, source=regulator, target=node, edge_type=EdgeType.DERIVED_FROM
         )
 
+    for spec in MONITORING_SOURCES:
+        await _get_or_create_monitoring_source(session, spec)
+
     await session.commit()
 
     counts: dict[str, int] = {}
     for nt in NodeType:
-        result = await session.execute(
-            select(Node).where(Node.node_type == nt.value)
-        )
+        result = await session.execute(select(Node).where(Node.node_type == nt.value))
         counts[nt.value] = len(result.scalars().all())
+    sources = await session.execute(select(MonitoringSource))
+    counts["monitoring_source"] = len(sources.scalars().all())
     return counts
 
 

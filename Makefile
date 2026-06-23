@@ -3,7 +3,8 @@ ifneq (,$(wildcard .env))
     export
 endif
 
-.PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed
+.PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
+        dev-api dev-web crawl
 
 help:
 	@echo "PolicyAI — available targets:"
@@ -11,11 +12,18 @@ help:
 	@echo "  test       Run pytest across all packages"
 	@echo "  lint       Run ruff + black --check"
 	@echo "  format     Auto-fix with ruff and black"
-	@echo "  db-up      Start Postgres (pgvector) via docker compose"
-	@echo "  db-down    Stop Postgres (keep volume)"
-	@echo "  db-reset   Destroy Postgres volume and start fresh"
-	@echo "  db-migrate Apply Alembic migrations (uses DATABASE_URL)"
-	@echo "  db-seed    Insert canonical regulators, entity classes, parent acts"
+	@echo "  db-migrate Apply Alembic migrations (uses DATABASE_URL -> Supabase)"
+	@echo "  db-seed    Insert regulators, entity classes, acts, monitoring sources"
+	@echo "  seed-demo  Insert a demo regulation + profile + obligation + tasks"
+	@echo "  crawl      Run one monitoring pass over all enabled sources"
+	@echo "  dev-api    Run the FastAPI worker locally (port 8000)"
+	@echo "  dev-web    Run the Next.js frontend locally (port 3000)"
+	@echo ""
+	@echo "  Cloud DB targets (optional local Postgres):"
+	@echo "  db-up/db-down/db-reset   docker compose Postgres for offline dev"
+	@echo ""
+	@echo "  First-time Supabase setup: run supabase/migrations/0000_platform.sql"
+	@echo "  in the SQL editor, then 'make db-migrate db-seed'."
 
 install:
 	uv sync
@@ -46,3 +54,15 @@ db-migrate:
 
 db-seed:
 	uv run python -m policyai_graph.seed
+
+seed-demo:
+	uv run python -m policyai_graph.seed_demo
+
+crawl:
+	uv run python -m policyai_scrapers.runner
+
+dev-api:
+	uv run uvicorn policyai_api.main:app --reload --host 0.0.0.0 --port 8000
+
+dev-web:
+	cd frontend && npm run dev

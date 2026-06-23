@@ -1,0 +1,28 @@
+{
+  "name": "PolicyAI (cloud dev)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/va-h/devcontainers-features/uv:1": {}
+  },
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": { "label": "Next.js frontend" },
+    "8000": { "label": "FastAPI worker" }
+  },
+  "postCreateCommand": "uv sync && (cd frontend && npm install)",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.black-formatter",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "DATABASE_URL": "${localEnv:DATABASE_URL}"
+  }
+}

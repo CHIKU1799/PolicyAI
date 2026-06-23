@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-04-18
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -77,9 +78,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint(
-            "source_id", "target_id", "edge_type", name="uq_edge_triple"
-        ),
+        sa.UniqueConstraint("source_id", "target_id", "edge_type", name="uq_edge_triple"),
     )
     op.create_index("ix_edges_edge_type", "edges", ["edge_type"])
     op.create_index("ix_edges_source_id", "edges", ["source_id"])

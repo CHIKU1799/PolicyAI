@@ -4,12 +4,12 @@ import asyncio
 import os
 from logging.config import fileConfig
 
+# Import side effect: register the application tables on ``Base.metadata`` so
+# Alembic autogenerate and ``target_metadata`` see them alongside the graph.
+import policyai_graph.models_app  # noqa: E402,F401
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from policyai_graph.models import Base
+from sqlalchemy.engine import Connection
 
 config = context.config
 
@@ -42,11 +42,11 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Use the project engine factory so URL normalization (asyncpg driver,
+    # percent-encoded credentials) and Supabase SSL handling apply here too.
+    from policyai_graph.db import make_engine
+
+    connectable = make_engine()
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
