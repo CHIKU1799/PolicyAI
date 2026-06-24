@@ -25,8 +25,10 @@ from policyai_graph.models_app import (
     DEFAULT_ORG_ID,
     Alert,
     AlertKind,
+    AuditEvent,
     CompanyDocument,
     CompanyProfile,
+    Gap,
     Obligation,
     Task,
 )
@@ -181,6 +183,33 @@ async def map_obligation(
                 priority=mt.priority,
             )
         )
+
+    # Gap register — record the coverage gap the analysis surfaced (one per obligation).
+    if mapping.gap_analysis:
+        existing_gap = (
+            await session.execute(select(Gap).where(Gap.obligation_id == obligation.id))
+        ).scalar_one_or_none()
+        if existing_gap is None:
+            session.add(
+                Gap(
+                    org_id=org_id,
+                    obligation_id=obligation.id,
+                    description=mapping.gap_analysis,
+                    severity=mapping.severity,
+                )
+            )
+
+    # Audit trail — append-only governance record.
+    session.add(
+        AuditEvent(
+            org_id=org_id,
+            entity_type="obligation",
+            entity_id=obligation.id,
+            action="obligation_mapped",
+            actor="mapping-engine",
+            detail={"title": mapping.title, "severity": mapping.severity},
+        )
+    )
 
     alert_message = f"New obligation ({mapping.severity}): {mapping.title}"
     session.add(

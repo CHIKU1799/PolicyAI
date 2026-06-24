@@ -61,7 +61,10 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE TABLE alerts, tasks, obligations, company_profiles, "
+                "TRUNCATE TABLE obligation_products, obligation_policies, "
+                "obligation_controls, audit_events, gaps, control_tests, controls, "
+                "policy_versions, policies, products, "
+                "alerts, tasks, obligations, company_profiles, "
                 "company_documents, scan_runs, monitoring_sources, "
                 "raw_documents, edges, nodes RESTART IDENTITY CASCADE"
             )

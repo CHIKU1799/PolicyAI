@@ -12,7 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <AlertFeed />
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0b1f4d] text-xs font-semibold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#4b40c4] text-xs font-semibold text-white">
               CO
             </div>
           </div>

@@ -90,7 +90,7 @@ export default function AskPage() {
             <div
               className={
                 m.role === "user"
-                  ? "max-w-[80%] rounded-2xl bg-[#0b1f4d] px-4 py-2.5 text-sm text-white"
+                  ? "max-w-[80%] rounded-2xl bg-[#4b40c4] px-4 py-2.5 text-sm text-white"
                   : "card max-w-[90%] px-4 py-3 text-sm text-slate-800"
               }
             >
@@ -148,7 +148,7 @@ export default function AskPage() {
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#0b1f4d] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#13306e] disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-lg bg-[#4b40c4] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3a2fb0] disabled:opacity-60"
         >
           <Send size={16} />
           Ask

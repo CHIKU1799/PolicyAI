@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.8",
     "httpx>=0.27",
     "policyai-graph",
+    "aioboto3>=15.5.0",
 ]
 
 [build-system]

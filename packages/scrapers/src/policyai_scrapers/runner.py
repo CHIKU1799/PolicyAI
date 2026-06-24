@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from policyai_extraction import notifications
+from policyai_extraction import notifications, storage
 from policyai_extraction.llm import LLMClient
 from policyai_extraction.pipeline import process_document
 from policyai_graph.db import make_engine, make_sessionmaker
@@ -81,6 +81,19 @@ async def scan_source(session: AsyncSession, source: MonitoringSource, llm: LLMC
             new_docs.append(doc)
         await session.flush()
         run.docs_new = len(new_docs)
+
+        # Archive each new document to the object-storage lake (R2 by default when
+        # enabled). Graceful: a storage outage must not fail the scan.
+        if storage.archive_enabled():
+            for doc in new_docs:
+                try:
+                    await storage.upload(
+                        f"regulations/{doc.source}/{doc.source_id}.txt",
+                        (doc.raw_text or "").encode("utf-8"),
+                        content_type="text/plain; charset=utf-8",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[runner] archive failed for {doc.source}:{doc.source_id}: {exc}")
 
         for doc in new_docs:
             try:

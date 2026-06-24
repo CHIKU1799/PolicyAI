@@ -25,7 +25,7 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="flex w-60 flex-col bg-[#0b1f4d] px-4 py-5 text-white">
+    <aside className="flex w-60 flex-col bg-[#4b40c4] px-4 py-5 text-white">
       <div className="mb-7 flex items-center gap-2 px-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500">
           <ScanLine size={18} />

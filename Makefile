@@ -61,6 +61,9 @@ seed-demo:
 crawl:
 	uv run python -m policyai_scrapers.runner
 
+storage-check:
+	uv run python -m policyai_extraction.storage_check
+
 dev-api:
 	uv run uvicorn policyai_api.main:app --reload --host 0.0.0.0 --port 8000
 

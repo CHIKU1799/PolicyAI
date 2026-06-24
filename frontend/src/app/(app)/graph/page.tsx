@@ -21,7 +21,7 @@ interface GLink {
 
 const TYPE_COLOR: Record<string, string> = {
   regulation: "#1d4ed8",
-  regulator: "#0b1f4d",
+  regulator: "#4b40c4",
   entity_class: "#059669",
   parent_act: "#7c3aed",
   topic: "#d97706",
@@ -82,7 +82,7 @@ export default function GraphPage() {
             onClick={() => setCenter(k)}
             className={`rounded-full border px-3 py-1 text-xs font-medium ${
               center === k
-                ? "border-[#0b1f4d] bg-[#0b1f4d] text-white"
+                ? "border-[#4b40c4] bg-[#4b40c4] text-white"
                 : "border-[var(--border)] bg-white text-[var(--muted)]"
             }`}
           >

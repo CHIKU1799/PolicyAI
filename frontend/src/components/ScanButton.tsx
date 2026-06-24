@@ -30,7 +30,7 @@ export default function ScanButton() {
       <button
         onClick={scan}
         disabled={busy}
-        className="inline-flex items-center gap-2 rounded-lg bg-[#0b1f4d] px-3 py-2 text-sm font-medium text-white hover:bg-[#13306e] disabled:opacity-60"
+        className="inline-flex items-center gap-2 rounded-lg bg-[#4b40c4] px-3 py-2 text-sm font-medium text-white hover:bg-[#3a2fb0] disabled:opacity-60"
       >
         <RefreshCw size={16} className={clsx(busy && "animate-spin")} />
         {busy ? "Scanning…" : "Scan now"}

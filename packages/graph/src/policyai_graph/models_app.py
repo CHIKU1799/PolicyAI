@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
@@ -237,4 +238,256 @@ class Alert(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ===========================================================================
+# GRC core — Controls, Policies, Products, Gaps, audit trail, and the mappings
+# that turn an obligation into something assigned to policies / controls /
+# products / owners (the Zango-style "structured obligations" model).
+# ===========================================================================
+
+
+class PolicyStatus(StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class ControlType(StrEnum):
+    PREVENTIVE = "preventive"
+    DETECTIVE = "detective"
+    CORRECTIVE = "corrective"
+
+
+class Effectiveness(StrEnum):
+    EFFECTIVE = "effective"
+    PARTIAL = "partial"
+    INEFFECTIVE = "ineffective"
+    UNTESTED = "untested"
+
+
+class TestResult(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+    PARTIAL = "partial"
+
+
+class GapStatus(StrEnum):
+    OPEN = "open"
+    REMEDIATING = "remediating"
+    CLOSED = "closed"
+    ACCEPTED = "accepted"
+
+
+class Policy(Base):
+    """A logical policy in the central library. Content lives in PolicyVersion so
+    the policy can be versioned with a review/approval lifecycle."""
+
+    __tablename__ = "policies"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=PolicyStatus.DRAFT.value
+    )
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class PolicyVersion(Base):
+    """An immutable content snapshot of a policy + its review/approval state."""
+
+    __tablename__ = "policy_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    policy_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("policies.id", ondelete="CASCADE"), nullable=False
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=PolicyStatus.DRAFT.value
+    )
+    created_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("policy_id", "version_no", name="uq_policy_version"),)
+
+
+class Control(Base):
+    """A control the firm operates to satisfy obligations; its tested effectiveness."""
+
+    __tablename__ = "controls"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    ref_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=ControlType.PREVENTIVE.value
+    )
+    frequency: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    owner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    effectiveness: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=Effectiveness.UNTESTED.value
+    )
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ControlTest(Base):
+    """One test of a control's effectiveness, with result + evidence."""
+
+    __tablename__ = "control_tests"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    control_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("controls.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[date | None] = mapped_column(Date, nullable=True)
+    performed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Product(Base):
+    """A firm product/business line that obligations can apply to."""
+
+    __tablename__ = "products"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entity_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Gap(Base):
+    """A gap between an obligation's requirement and the firm's coverage."""
+
+    __tablename__ = "gaps"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    obligation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="CASCADE"), nullable=False
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default=Severity.MEDIUM.value)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=GapStatus.OPEN.value)
+    remediation_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AuditEvent(Base):
+    """Append-only audit trail for governance traceability. Never updated/deleted."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ObligationControl(Base):
+    """Mapping: which controls satisfy an obligation."""
+
+    __tablename__ = "obligation_controls"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    obligation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="CASCADE"), nullable=False
+    )
+    control_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("controls.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("obligation_id", "control_id", name="uq_obligation_control"),
+    )
+
+
+class ObligationPolicy(Base):
+    """Mapping: which policies address an obligation."""
+
+    __tablename__ = "obligation_policies"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    obligation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="CASCADE"), nullable=False
+    )
+    policy_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("policies.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("obligation_id", "policy_id", name="uq_obligation_policy"),)
+
+
+class ObligationProduct(Base):
+    """Mapping: which products an obligation applies to."""
+
+    __tablename__ = "obligation_products"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    obligation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("obligation_id", "product_id", name="uq_obligation_product"),
     )

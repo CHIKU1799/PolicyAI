@@ -3,12 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f6f8fb;
+  /* Aligned to the PolicyAI Platform reference: indigo brand, warm neutrals, green success. */
+  --bg: #f0f0ec;
   --surface: #ffffff;
-  --border: #e3e8ef;
-  --text: #0f1b2d;
-  --muted: #5b6b82;
-  --brand: #1d4ed8;
+  --border: #e6e5e0;
+  --text: #2b2e35;
+  --muted: #71757e;
+  --brand: #4b40c4;
+  --brand-dark: #3a2fb0;
+  --success: #1f9d5b;
 }
 
 body {

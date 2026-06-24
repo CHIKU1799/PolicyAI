@@ -42,7 +42,7 @@ export default function ObligationsPage() {
             onClick={() => setSeverity(s)}
             className={`rounded-full border px-3 py-1 text-xs font-medium capitalize ${
               severity === s
-                ? "border-[#0b1f4d] bg-[#0b1f4d] text-white"
+                ? "border-[#4b40c4] bg-[#4b40c4] text-white"
                 : "border-[var(--border)] bg-white text-[var(--muted)]"
             }`}
           >
