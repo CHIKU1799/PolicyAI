@@ -141,13 +141,31 @@ class RBIScraper(BaseScraper):
             el = await page.query_selector(sel)
             if el:
                 t = (await el.inner_text()).strip()
-                if 8 <= len(t) <= 300:
+                if _looks_like_title(t):
                     return t
         for line in text.splitlines():
             line = line.strip()
-            if len(line) >= 12 and not DATE_RE.fullmatch(line):
+            if _looks_like_title(line):
                 return line[:300]
         return f"RBI Notification {page.url.rsplit('Id=', 1)[-1].split('&')[0]}"
+
+
+# A notification detail page peppers non-title bold/heading text around the real
+# title: file-size labels on the PDF link ("(336 kb)"), format tags, bare dates.
+# Reject those so the id-enumerated doc gets a meaningful title, not "(336 kb)".
+_TITLE_JUNK_RE = re.compile(
+    r"^\(?\s*\d+(\.\d+)?\s*(kb|mb|gb)\s*\)?$|^(pdf|download|click here|back)$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_title(text: str) -> bool:
+    text = text.strip()
+    if not (12 <= len(text) <= 300):
+        return False
+    if DATE_RE.fullmatch(text) or _TITLE_JUNK_RE.match(text):
+        return False
+    return any(c.isalpha() for c in text)
 
 
 # "No record" / gap ids render a short placeholder rather than a 404. Treat a page

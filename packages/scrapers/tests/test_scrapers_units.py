@@ -10,7 +10,7 @@ from policyai_graph.seed import MONITORING_SOURCES
 from policyai_scrapers import SCRAPER_REGISTRY
 from policyai_scrapers.base import DocMeta
 from policyai_scrapers.feed_base import parse_feed, parse_feed_date, strip_html
-from policyai_scrapers.rbi import RBIScraper, _first_date, _is_empty_notice
+from policyai_scrapers.rbi import RBIScraper, _first_date, _is_empty_notice, _looks_like_title
 from policyai_scrapers.runner import _is_due
 from policyai_scrapers.util import select_new, with_retry
 
@@ -146,6 +146,19 @@ def test_rbi_empty_notice_detection():
         "offering foreign exchange trading facilities to Indian residents. " * 6
     )
     assert _is_empty_notice(real) is False
+
+
+def test_looks_like_title_rejects_junk():
+    # Real titles pass.
+    assert _looks_like_title("Unauthorised foreign exchange transactions")
+    assert _looks_like_title("Master Direction on Pricing of Credit")
+    # File-size labels, format tags, bare dates, too-short/no-alpha -> rejected.
+    assert not _looks_like_title("(336 kb)")
+    assert not _looks_like_title("1.2 MB")
+    assert not _looks_like_title("PDF")
+    assert not _looks_like_title("April 24, 2024")
+    assert not _looks_like_title("short")
+    assert not _looks_like_title("1234567890123")
 
 
 def test_first_date_parses_notification_dateline():
