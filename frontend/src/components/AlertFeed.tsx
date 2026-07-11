@@ -60,7 +60,7 @@ export default function AlertFeed() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 card max-h-96 overflow-y-auto">
+        <div className="absolute right-0 z-50 mt-2 w-80 card max-h-96 overflow-y-auto shadow-xl">
           <div className="border-b border-[var(--border)] px-4 py-2 text-sm font-semibold">
             Live alerts
           </div>

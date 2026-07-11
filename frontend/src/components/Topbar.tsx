@@ -44,7 +44,7 @@ export default function Topbar() {
   }, [router]);
 
   return (
-    <header className="flex h-[60px] flex-none items-center gap-4 border-b border-[var(--border)] bg-[rgba(252,252,251,.82)] px-6 backdrop-blur-md">
+    <header className="relative z-40 flex h-[60px] flex-none items-center gap-4 border-b border-[var(--border)] bg-[rgba(252,252,251,.82)] px-6 backdrop-blur-md">
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <div className="flex-none">
         <div className="serif text-[19px] font-medium leading-tight tracking-[-.01em]">{title}</div>
