@@ -9,10 +9,12 @@ the whole pass. Invoked by the Render cron job:  python -m policyai_scrapers.run
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 
 from policyai_extraction import notifications, storage
 from policyai_extraction.llm import LLMClient
+from policyai_extraction.map_all import map_unmapped_in_session
 from policyai_extraction.pipeline import process_document
 from policyai_graph.db import make_engine, make_sessionmaker
 from policyai_graph.models import RawDocument
@@ -27,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_scrapers import SCRAPER_REGISTRY
+from policyai_scrapers.util import log
 
 
 def _is_due(source: MonitoringSource, now: datetime) -> bool:
@@ -58,16 +61,21 @@ async def scan_source(session: AsyncSession, source: MonitoringSource, llm: LLMC
         return run
 
     try:
-        scraper = scraper_cls(source.base_url)
-        metas = await scraper.collect()
-        run.docs_found = len(metas)
+        # Compute the watermark first so the scraper can skip fetching full text for
+        # documents we already have — the crawl pays only for genuinely new ones.
         seen = await _existing_ids(session, source.regulator_key)
+        scraper = scraper_cls(source.base_url)
+        metas = await scraper.collect(known_ids=set(seen))
+        # discovered_count is the total seen on the listing/feed; metas are the new
+        # ones whose text we actually fetched.
+        run.docs_found = scraper.discovered_count or len(metas)
 
         new_docs: list[RawDocument] = []
         for meta in metas:
-            content_hash = meta.content_hash()
-            if seen.get(meta.source_id) == content_hash:
-                continue  # unchanged -> skip
+            # Defence in depth: the watermark already filtered known source_ids, but
+            # re-check in case a doc was ingested by a concurrent run mid-crawl.
+            if meta.source_id in seen:
+                continue
             doc = RawDocument(
                 source=meta.source,
                 source_id=meta.source_id,
@@ -75,12 +83,14 @@ async def scan_source(session: AsyncSession, source: MonitoringSource, llm: LLMC
                 title=meta.title,
                 raw_text=meta.raw_text,
                 published_date=meta.published_date,
-                content_hash=content_hash,
+                content_hash=meta.content_hash(),
             )
             session.add(doc)
             new_docs.append(doc)
-        await session.flush()
         run.docs_new = len(new_docs)
+        # Persist the raw documents (and scan-run progress) up front so a later
+        # extraction failure can't lose them.
+        await session.commit()
 
         # Archive each new document to the object-storage lake (R2 by default when
         # enabled). Graceful: a storage outage must not fail the scan.
@@ -93,13 +103,17 @@ async def scan_source(session: AsyncSession, source: MonitoringSource, llm: LLMC
                         content_type="text/plain; charset=utf-8",
                     )
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[runner] archive failed for {doc.source}:{doc.source_id}: {exc}")
+                    log.warning("archive failed for %s:%s: %s", doc.source, doc.source_id, exc)
 
+        # Extract each document in its own transaction — one failure (deadlock,
+        # transient error) rolls back just that doc and the scan continues.
         for doc in new_docs:
             try:
                 await process_document(session, doc, llm)
-            except Exception as exc:  # noqa: BLE001 - extraction of one doc failing isn't fatal
-                print(f"[runner] extraction failed for {doc.source}:{doc.source_id}: {exc}")
+                await session.commit()
+            except Exception as exc:  # noqa: BLE001 - one doc failing isn't fatal
+                await session.rollback()
+                log.warning("extraction failed for %s:%s: %s", doc.source, doc.source_id, exc)
 
         source.last_scanned_at = datetime.now(UTC)
         run.status = ScanStatus.SUCCEEDED.value
@@ -114,9 +128,20 @@ async def scan_source(session: AsyncSession, source: MonitoringSource, llm: LLMC
     return run
 
 
-async def run_once(*, force: bool = False) -> None:
-    """Run one monitoring pass. ``force=True`` scans every enabled source
-    regardless of cadence (used by the dashboard 'Scan now' button)."""
+def _map_after_scan() -> bool:
+    """Whether a crawl should also map new regulations to obligations. Default on:
+    a compliance officer who clicks 'Scan now' expects obligations, not just raw
+    regulations. Set MAP_AFTER_SCAN=false to keep crawl and mapping separate."""
+    return os.getenv("MAP_AFTER_SCAN", "true").lower() not in ("false", "0", "no")
+
+
+async def run_once(*, force: bool = False, map_after: bool | None = None) -> None:
+    """Run one monitoring pass. ``force=True`` scans every enabled source regardless
+    of cadence (used by the dashboard 'Scan now' button). When ``map_after`` (default
+    from MAP_AFTER_SCAN), newly ingested regulations are mapped to obligations in the
+    same pass, so the flow is end-to-end: crawl -> extract -> map -> obligations."""
+    if map_after is None:
+        map_after = _map_after_scan()
     engine = make_engine()
     sessionmaker = make_sessionmaker(engine)
     llm = LLMClient()
@@ -124,15 +149,24 @@ async def run_once(*, force: bool = False) -> None:
     async with sessionmaker() as session:
         sources = (await session.execute(select(MonitoringSource))).scalars().all()
         due = [s for s in sources if s.enabled and (force or _is_due(s, now))]
-        print(f"[runner] {len(due)}/{len(sources)} sources {'forced' if force else 'due'}")
+        log.info("%d/%d sources %s", len(due), len(sources), "forced" if force else "due")
         for source in due:
             run = await scan_source(session, source, llm)
             await session.commit()
-            print(
-                f"[runner] {source.name}: {run.status} "
-                f"({run.docs_new} new / {run.docs_found} found)"
+            log.info(
+                "%s: %s (%d new / %d found)",
+                source.name,
+                run.status,
+                run.docs_new,
+                run.docs_found,
             )
-    print(f"[runner] LLM cost: {llm.cost.summary()}")
+        if map_after:
+            # Turn freshly ingested regulations into obligations/gaps/tasks. The
+            # relevance gate skips regulations that don't apply to the org, so this
+            # only spends on the ones that matter.
+            mapped, skipped = await map_unmapped_in_session(session, llm)
+            log.info("post-scan mapping: mapped=%d skipped=%d", mapped, skipped)
+    log.info("LLM cost: %s", llm.cost.summary())
     await llm.aclose()
     await engine.dispose()
 

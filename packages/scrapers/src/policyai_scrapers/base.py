@@ -20,7 +20,10 @@ from datetime import date
 
 from playwright.async_api import Page, async_playwright
 
+from policyai_scrapers.util import log, select_new, with_retry
+
 REQUEST_DELAY = float(os.getenv("SCRAPER_REQUEST_DELAY", "2.0"))
+FETCH_ATTEMPTS = int(os.getenv("SCRAPER_FETCH_ATTEMPTS", "3"))
 
 
 @dataclass
@@ -53,6 +56,7 @@ class BaseScraper(abc.ABC):
     def __init__(self, base_url: str, *, backfill_months: int = 6) -> None:
         self.base_url = base_url
         self.backfill_months = backfill_months
+        self.discovered_count = 0  # set during collect() for ScanRun observability
 
     @abc.abstractmethod
     async def discover(self, page: Page) -> list[DocMeta]:
@@ -62,9 +66,10 @@ class BaseScraper(abc.ABC):
     async def fetch(self, page: Page, meta: DocMeta) -> str:
         """Return the full text of one document."""
 
-    async def collect(self) -> list[DocMeta]:
-        """Drive a headless browser end-to-end: discover, then fetch each doc's
-        text. Per-document fetch failures are skipped, not fatal."""
+    async def collect(self, known_ids: set[str] | None = None) -> list[DocMeta]:
+        """Drive a headless browser end-to-end: discover, drop already-ingested
+        documents (the incremental watermark), then fetch each remaining doc's text
+        with retry/backoff. Per-document fetch failures are skipped, not fatal."""
         results: list[DocMeta] = []
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -76,15 +81,29 @@ class BaseScraper(abc.ABC):
             )
             page = await context.new_page()
             try:
-                metas = await self.discover(page)
-                for meta in metas:
+                discovered = await self.discover(page)
+                self.discovered_count = len(discovered)
+                fresh = select_new(discovered, known_ids)
+                log.info(
+                    "%s: discovered %d, %d new to fetch",
+                    self.scraper_kind,
+                    len(discovered),
+                    len(fresh),
+                )
+                for meta in fresh:
                     try:
                         await asyncio.sleep(REQUEST_DELAY)
-                        meta.raw_text = await self.fetch(page, meta)
+                        meta.raw_text = await with_retry(
+                            lambda m=meta: self.fetch(page, m),
+                            attempts=FETCH_ATTEMPTS,
+                            label=f"{self.scraper_kind}:{meta.source_id}",
+                        )
                         if meta.raw_text.strip():
                             results.append(meta)
                     except Exception as exc:  # noqa: BLE001 - one bad doc shouldn't kill the run
-                        print(f"[{self.scraper_kind}] fetch failed for {meta.source_url}: {exc}")
+                        log.warning(
+                            "%s: fetch failed for %s: %s", self.scraper_kind, meta.source_url, exc
+                        )
             finally:
                 await context.close()
                 await browser.close()

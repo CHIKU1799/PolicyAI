@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from policyai_graph.models_app import MonitoringSource
 from policyai_graph.seed import MONITORING_SOURCES
 from policyai_scrapers import SCRAPER_REGISTRY
 from policyai_scrapers.base import DocMeta
+from policyai_scrapers.feed_base import parse_feed, parse_feed_date, strip_html
 from policyai_scrapers.runner import _is_due
+from policyai_scrapers.util import select_new, with_retry
 
 
 def test_registry_covers_all_seeded_sources():
@@ -31,6 +34,87 @@ def test_content_hash_is_stable_and_change_sensitive():
 
     d = DocMeta(source="rbi", source_id="1", source_url="u", title="NEW", raw_text="body")
     assert a.content_hash() != d.content_hash()  # edited title -> re-ingest
+
+
+def test_parse_feed_handles_rss_and_atom():
+    rss = """<?xml version='1.0'?>
+    <rss version='2.0' xmlns:content='http://purl.org/rss/1.0/modules/content/'>
+      <channel>
+        <item>
+          <title>Master Direction on Pricing of Credit</title>
+          <link>https://example.gov.in/circular/2026-001</link>
+          <guid>CIRC-2026-001</guid>
+          <pubDate>Mon, 22 Jun 2026 10:00:00 +0530</pubDate>
+          <description>Short blurb.</description>
+          <content:encoded>The fuller body text of the circular goes here.</content:encoded>
+        </item>
+      </channel>
+    </rss>"""
+    items = parse_feed(rss)
+    assert len(items) == 1
+    it = items[0]
+    assert it["title"] == "Master Direction on Pricing of Credit"
+    assert it["link"] == "https://example.gov.in/circular/2026-001"
+    assert it["id"] == "CIRC-2026-001"
+    # content:encoded is richer than description -> it wins
+    assert "fuller body text" in it["content"]
+    assert parse_feed_date(it["date"]) == date(2026, 6, 22)
+
+    atom = """<?xml version='1.0'?>
+    <feed xmlns='http://www.w3.org/2005/Atom'>
+      <entry>
+        <title>Advisory 2026-07</title>
+        <link href='https://cert.example.in/adv/2026-07'/>
+        <id>adv-2026-07</id>
+        <updated>2026-07-01T09:30:00Z</updated>
+        <summary>Patch your systems.</summary>
+      </entry>
+    </feed>"""
+    items = parse_feed(atom)
+    assert len(items) == 1
+    assert items[0]["link"] == "https://cert.example.in/adv/2026-07"
+    assert parse_feed_date(items[0]["date"]) == date(2026, 7, 1)
+
+
+def test_strip_html_unescapes_and_collapses():
+    assert strip_html("<p>Hello&nbsp;&amp; <b>world</b></p>") == "Hello & world"
+
+
+def test_select_new_applies_watermark():
+    metas = [
+        DocMeta(source="rbi", source_id="1", source_url="u1", title="A"),
+        DocMeta(source="rbi", source_id="2", source_url="u2", title="B"),
+        DocMeta(source="rbi", source_id="3", source_url="u3", title="C"),
+    ]
+    # Known ids 1 and 2 are skipped; only the new doc 3 survives.
+    fresh = select_new(metas, {"1", "2"})
+    assert [m.source_id for m in fresh] == ["3"]
+    # No watermark (first crawl) -> everything is new.
+    assert len(select_new(metas, None)) == 3
+    assert len(select_new(metas, set())) == 3
+
+
+@pytest.mark.asyncio
+async def test_with_retry_succeeds_after_transient_failures():
+    calls = {"n": 0}
+
+    async def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("transient")
+        return "ok"
+
+    out = await with_retry(flaky, attempts=3, base_delay=0.0, label="t")
+    assert out == "ok" and calls["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_with_retry_reraises_after_exhausting_attempts():
+    async def always_fails():
+        raise TimeoutError("nope")
+
+    with pytest.raises(TimeoutError):
+        await with_retry(always_fails, attempts=2, base_delay=0.0, label="t")
 
 
 def test_is_due_cadence_logic():
