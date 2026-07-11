@@ -16,7 +16,16 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from policyai_api.deps import get_session
-from policyai_api.routes import ask, documents, graph, internal, profile, scan
+from policyai_api.routes import (
+    ask,
+    documents,
+    graph,
+    insights,
+    internal,
+    profile,
+    scan,
+    timeline,
+)
 
 app = FastAPI(title="PolicyAI Worker", version="0.1.0")
 
@@ -34,6 +43,8 @@ app.include_router(internal.router)
 app.include_router(graph.router)
 app.include_router(scan.router)
 app.include_router(ask.router)
+app.include_router(timeline.router)
+app.include_router(insights.router)
 
 
 @app.get("/health")

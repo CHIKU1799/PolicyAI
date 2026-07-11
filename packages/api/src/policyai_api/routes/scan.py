@@ -9,6 +9,7 @@ they land, so the caller doesn't need to poll this endpoint.
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks
+from policyai_extraction.map_all import map_unmapped
 from policyai_scrapers.runner import run_once
 from pydantic import BaseModel
 
@@ -27,4 +28,16 @@ async def scan_now(background: BackgroundTasks) -> ScanResponse:
         status="started",
         detail="Monitoring pass started for all enabled sources. "
         "Results appear in the dashboard as they are processed.",
+    )
+
+
+@router.post("/map", response_model=ScanResponse, status_code=202)
+async def map_now(background: BackgroundTasks) -> ScanResponse:
+    """Map every ingested regulation that still lacks an obligation. Useful after a
+    bulk ingest, or to re-run mapping if MAP_AFTER_SCAN was disabled during a crawl."""
+    background.add_task(map_unmapped)
+    return ScanResponse(
+        status="started",
+        detail="Obligation mapping started for unmapped regulations. "
+        "New obligations, gaps and tasks appear in the dashboard as they are produced.",
     )
