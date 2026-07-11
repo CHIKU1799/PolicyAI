@@ -9,7 +9,7 @@ tasks + alerts it produces. Idempotent: safe to re-run. Requires the canonical
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,11 +23,23 @@ from policyai_graph.models_app import (
     AlertKind,
     CompanyDocument,
     CompanyProfile,
+    Control,
+    ControlTest,
+    ControlType,
     DocumentStatus,
+    Effectiveness,
+    Gap,
+    GapStatus,
     Obligation,
+    ObligationControl,
+    ObligationPolicy,
+    Policy,
+    PolicyStatus,
+    PolicyVersion,
     Priority,
     Severity,
     Task,
+    TestResult,
 )
 
 DEMO_REG_KEY = "rbi:demo-mfi-pricing-2026"
@@ -183,6 +195,144 @@ async def seed_demo(session: AsyncSession) -> dict[str, int]:
                     due_date=date(2026, 9, 30),
                 )
             )
+
+    # 5b) GRC demo — controls + tests, a versioned policy, a gap, and the
+    # obligation→control/policy mappings that make the obligation "structured".
+    has_controls = (
+        await session.execute(
+            select(func.count()).select_from(Control).where(Control.org_id == DEFAULT_ORG_ID)
+        )
+    ).scalar_one()
+    if not has_controls:
+        controls = [
+            Control(
+                org_id=DEFAULT_ORG_ID,
+                ref_code="C-001",
+                title="Interest spread cap monitoring",
+                description="Monthly check that loan pricing stays within the RBI spread cap.",
+                control_type=ControlType.DETECTIVE.value,
+                frequency="monthly",
+                owner="Head of Credit",
+                effectiveness=Effectiveness.EFFECTIVE.value,
+            ),
+            Control(
+                org_id=DEFAULT_ORG_ID,
+                ref_code="C-002",
+                title="Periodic KYC refresh",
+                description="KYC re-verification on the prescribed cadence.",
+                control_type=ControlType.PREVENTIVE.value,
+                frequency="annual",
+                owner="Compliance Officer",
+                effectiveness=Effectiveness.PARTIAL.value,
+            ),
+            Control(
+                org_id=DEFAULT_ORG_ID,
+                ref_code="C-003",
+                title="Effective-rate disclosure",
+                description="Borrower statements disclose the effective annualised rate.",
+                control_type=ControlType.PREVENTIVE.value,
+                frequency="per-disbursal",
+                owner="Operations",
+                effectiveness=Effectiveness.UNTESTED.value,
+            ),
+        ]
+        for c in controls:
+            session.add(c)
+        await session.flush()
+        session.add(
+            ControlTest(
+                org_id=DEFAULT_ORG_ID,
+                control_id=controls[0].id,
+                performed_at=datetime(2026, 6, 1, tzinfo=UTC),
+                performed_by="Internal Audit",
+                result=TestResult.PASS.value,
+                notes="Spread within cap for all sampled loans.",
+            )
+        )
+        session.add(
+            ControlTest(
+                org_id=DEFAULT_ORG_ID,
+                control_id=controls[1].id,
+                performed_at=datetime(2026, 5, 15, tzinfo=UTC),
+                performed_by="Internal Audit",
+                result=TestResult.FAIL.value,
+                notes="12% of accounts overdue for KYC refresh.",
+            )
+        )
+        for c in controls:
+            session.add(
+                ObligationControl(
+                    org_id=DEFAULT_ORG_ID, obligation_id=obligation.id, control_id=c.id
+                )
+            )
+
+    has_policy = (
+        await session.execute(
+            select(func.count()).select_from(Policy).where(Policy.org_id == DEFAULT_ORG_ID)
+        )
+    ).scalar_one()
+    if not has_policy:
+        policy = Policy(
+            org_id=DEFAULT_ORG_ID,
+            title="Fair Practices Code",
+            summary="Pricing, disclosure and grievance-redressal policy for microfinance lending.",
+            owner="Compliance Officer",
+            status=PolicyStatus.APPROVED.value,
+            current_version=2,
+        )
+        session.add(policy)
+        await session.flush()
+        session.add(
+            PolicyVersion(
+                policy_id=policy.id,
+                version_no=1,
+                change_note="Initial version.",
+                status=PolicyStatus.ARCHIVED.value,
+                created_by="Compliance Officer",
+                approved_by="Board",
+                approved_at=datetime(2025, 4, 1, tzinfo=UTC),
+            )
+        )
+        session.add(
+            PolicyVersion(
+                policy_id=policy.id,
+                version_no=2,
+                change_note="Added effective-rate disclosure clause.",
+                status=PolicyStatus.APPROVED.value,
+                created_by="Compliance Officer",
+                approved_by="Board",
+                approved_at=datetime(2026, 3, 15, tzinfo=UTC),
+            )
+        )
+        session.add(
+            ObligationPolicy(
+                org_id=DEFAULT_ORG_ID, obligation_id=obligation.id, policy_id=policy.id
+            )
+        )
+
+    has_gap = (
+        await session.execute(
+            select(func.count()).select_from(Gap).where(Gap.obligation_id == obligation.id)
+        )
+    ).scalar_one()
+    if not has_gap:
+        session.add(
+            Gap(
+                org_id=DEFAULT_ORG_ID,
+                obligation_id=obligation.id,
+                description=(
+                    "No explicit spread-cap evidence for the latest quarter; the KYC refresh "
+                    "control is failing for 12% of accounts."
+                ),
+                severity=Severity.HIGH.value,
+                status=GapStatus.OPEN.value,
+                remediation_plan=(
+                    "Automate spread-cap monitoring and clear the KYC refresh backlog by Q3."
+                ),
+                owner="Compliance Officer",
+                due_date=date(2026, 9, 30),
+            )
+        )
 
     # 6) Alerts (only seed once).
     has_alerts = (

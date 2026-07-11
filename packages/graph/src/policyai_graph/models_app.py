@@ -16,16 +16,64 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from policyai_graph.models import EMBEDDING_DIM, Base
 
-# Sentinel org used while the platform is single-tenant. Real orgs replace this
-# once Supabase Auth lands; the column stays nullable so nothing breaks meanwhile.
+# The default organization (real row in `organizations`). All existing data is
+# owned by it; new Auth users are enrolled into it so the platform "just works".
 DEFAULT_ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+class Role(StrEnum):
+    ADMIN = "admin"
+    COMPLIANCE_OFFICER = "compliance_officer"
+    CONTROL_OWNER = "control_owner"
+    AUDITOR = "auditor"
+    MEMBER = "member"
+
+
+class Organization(Base):
+    """A tenant — a firm using the platform. All data is scoped to an org."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Membership(Base):
+    """Links a Supabase Auth user to an org with a role. Drives RLS + RBAC."""
+
+    __tablename__ = "memberships"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default=Role.MEMBER.value)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "org_id", name="uq_membership"),)
 
 
 class ScanStatus(StrEnum):
@@ -55,6 +103,22 @@ class ObligationStatus(StrEnum):
     IN_REVIEW = "in_review"
     ADDRESSED = "addressed"
     DISMISSED = "dismissed"
+    SUPERSEDED = "superseded"  # the source regulation was superseded/amended away
+
+
+class RequirementType(StrEnum):
+    """The nature of a single atomic compliance requirement."""
+
+    DISCLOSURE = "disclosure"
+    REPORTING = "reporting"
+    RECORDKEEPING = "recordkeeping"
+    GOVERNANCE = "governance"
+    OPERATIONAL = "operational"
+    PROHIBITION = "prohibition"
+    CAPITAL = "capital"
+    CONSUMER_PROTECTION = "consumer_protection"
+    REGISTRATION = "registration"
+    AUDIT = "audit"
 
 
 class TaskStatus(StrEnum):
@@ -75,7 +139,20 @@ class AlertKind(StrEnum):
     NEW_REGULATION = "new_regulation"
     NEW_OBLIGATION = "new_obligation"
     DEADLINE_APPROACHING = "deadline_approaching"
+    REGULATION_SUPERSEDED = "regulation_superseded"
     SCAN_FAILED = "scan_failed"
+    # A submitted policy actively contradicts a regulatory requirement — the highest
+    # penalty risk, so it gets its own alert kind (not just a generic gap).
+    POLICY_CONFLICT = "policy_conflict"
+
+
+class CoverageStatus(StrEnum):
+    """How a firm's policy covers one regulatory requirement."""
+
+    COVERED = "covered"  # policy already satisfies it
+    PARTIAL = "partial"  # addressed but incomplete/outdated
+    MISSING = "missing"  # not addressed at all
+    CONFLICTING = "conflicting"  # policy contradicts the requirement (top risk)
 
 
 class MonitoringSource(Base):
@@ -187,6 +264,33 @@ class Obligation(Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=ObligationStatus.OPEN.value
     )
+    # Concrete compliance metadata distilled from the regulation.
+    obligation_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=RequirementType.OPERATIONAL.value
+    )
+    frequency: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Text (not varchar): model-generated citations chain multiple references and
+    # routinely exceed any fixed width. See migration 0010.
+    regulatory_citation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    penalty_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_required: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How confident the mapping engine is that this applies, + the one-line reason
+    # (the audit trail for "why is this an obligation for us").
+    mapping_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    relevance_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Bitemporal: when this obligation took effect, when it stopped applying, and
+    # the obligation that replaced it (set when its source regulation is superseded).
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="SET NULL"), nullable=True
+    )
+    # Transaction-time start: when PolicyAI learned this obligation (distinct from
+    # created_at row-insert and from effective_date, the business-time start).
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -194,6 +298,52 @@ class Obligation(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "regulation_node_id", name="uq_obligation_per_regulation"),
     )
+
+
+class Requirement(Base):
+    """An atomic, actionable requirement extracted from a regulation's text.
+
+    A single regulation usually imposes several discrete requirements (a disclosure,
+    a periodic filing, a board-approval mandate…). These are objective regulatory
+    facts tied to the regulation node — shared across orgs — so the obligation
+    register can show exactly what a document mandates, with citations and evidence.
+    """
+
+    __tablename__ = "requirements"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    regulation_node_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    requirement_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=RequirementType.OPERATIONAL.value
+    )
+    applies_to: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    frequency: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Text (not varchar): citations are unbounded. See migration 0010.
+    citation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_expected: Mapped[str | None] = mapped_column(Text, nullable=True)
+    penalty: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Bitemporal: requirements share their regulation's lifecycle. When the source
+    # regulation is superseded, supersede_node() closes valid_to/invalidated_at here
+    # too, so a point-in-time query never returns a requirement from a dead document.
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("regulation_node_id", "seq", name="uq_requirement_seq"),)
 
 
 class Task(Base):
@@ -350,6 +500,16 @@ class Control(Base):
     )
     last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    # Bitemporal: when the control was in operation, retired, and what replaced it.
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("controls.id", ondelete="SET NULL"), nullable=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -401,12 +561,36 @@ class Gap(Base):
     obligation_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("obligations.id", ondelete="CASCADE"), nullable=False
     )
+    # When set, this gap is scoped to one atomic requirement (requirement-level gap);
+    # null means it's the obligation-level summary gap.
+    requirement_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), nullable=True
+    )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, default=Severity.MEDIUM.value)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=GapStatus.OPEN.value)
+    # Coverage classification of the firm's policy against this requirement
+    # (covered/partial/missing/conflicting). Null for obligation-level summary gaps.
+    coverage_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The exact policy passage that covers or contradicts the requirement — the
+    # citable evidence behind the flag, and what makes a penalty finding defensible.
+    evidence_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_doc_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("company_documents.id", ondelete="SET NULL"), nullable=True
+    )
     remediation_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Bitemporal: a gap auto-closes when its obligation is superseded away.
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("gaps.id", ondelete="SET NULL"), nullable=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
