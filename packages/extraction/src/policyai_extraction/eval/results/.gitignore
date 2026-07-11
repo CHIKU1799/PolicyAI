@@ -1,0 +1,4 @@
+# Per-run eval scorecards are local history, not committed. The committed
+# regression baseline lives in ../baseline.json.
+*
+!.gitignore

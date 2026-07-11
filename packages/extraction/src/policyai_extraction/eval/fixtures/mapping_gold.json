@@ -1,0 +1,58 @@
+{
+  "rbi_mfi_pricing_grounded": {
+    "is_relevant_expected": true,
+    "expect_pass": true,
+    "grounding_corpus": "The microfinance lender must disclose the effective interest rate and all processing charges in the loan agreement and the factsheet. A board-approved pricing policy must cap the interest margin. Recovery practices must avoid harassment and the lender must publish a grievance redressal mechanism with a nodal officer.",
+    "mapping": {
+      "is_relevant": true,
+      "mapping_confidence": 0.86,
+      "severity": "high",
+      "gap_analysis": "Company factsheet does not yet surface the effective interest rate.",
+      "requirement_gaps": [
+        {"requirement_index": 0, "status": "gap", "severity": "high", "gap_description": "No board-approved pricing policy capping the interest margin is on file."},
+        {"requirement_index": 1, "status": "gap", "severity": "medium", "gap_description": "Factsheet omits processing charges disclosure in the loan agreement."},
+        {"requirement_index": 2, "status": "covered", "severity": "low", "gap_description": "Grievance redressal nodal officer already published."}
+      ]
+    }
+  },
+  "rbi_mfi_pricing_hallucinated": {
+    "is_relevant_expected": true,
+    "expect_pass": false,
+    "grounding_corpus": "The microfinance lender must disclose the effective interest rate and all processing charges in the loan agreement and the factsheet. A board-approved pricing policy must cap the interest margin.",
+    "mapping": {
+      "is_relevant": true,
+      "mapping_confidence": 0.91,
+      "severity": "critical",
+      "gap_analysis": "Multiple gaps found.",
+      "requirement_gaps": [
+        {"requirement_index": 0, "status": "gap", "severity": "critical", "gap_description": "Company has not appointed a chief cryptocurrency custodian for offshore derivative settlement."}
+      ]
+    }
+  },
+  "sebi_ria_not_relevant": {
+    "is_relevant_expected": false,
+    "expect_pass": true,
+    "grounding_corpus": "Registered investment advisers must maintain records of risk profiling and disclose conflicts of interest.",
+    "mapping": {
+      "is_relevant": false,
+      "mapping_confidence": 0.2,
+      "severity": "low",
+      "gap_analysis": "Regulation applies to investment advisers; company is an NBFC-MFI.",
+      "requirement_gaps": []
+    }
+  },
+  "certin_incident_bad_confidence": {
+    "is_relevant_expected": true,
+    "expect_pass": false,
+    "grounding_corpus": "Body corporates must report cyber security incidents to CERT-In within six hours of detection and maintain logs for 180 days in the Indian jurisdiction.",
+    "mapping": {
+      "is_relevant": true,
+      "mapping_confidence": 1.7,
+      "severity": "urgent",
+      "gap_analysis": "Incident reporting SLA not configured.",
+      "requirement_gaps": [
+        {"requirement_index": 0, "status": "gap", "severity": "high", "gap_description": "No six hour incident reporting workflow to CERT-In is configured."}
+      ]
+    }
+  }
+}

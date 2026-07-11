@@ -1,0 +1,14 @@
+{
+  "mapping": {
+    "cases": 4,
+    "confidence_valid_rate": 0.75,
+    "detection_accuracy": 1.0,
+    "grounded_rate": 0.75,
+    "label": "mapping",
+    "pass_rate": 1.0,
+    "passed": 2,
+    "relevance_accuracy": 1.0,
+    "severity_valid_rate": 0.75,
+    "timestamp": "20260629T043349Z"
+  }
+}

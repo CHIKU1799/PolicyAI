@@ -6,11 +6,15 @@ and reorders them, so the obligation-mapping gap analysis and the Ask agent feed
 on the *most relevant* text — better precision, with Claude still doing the
 reasoning.
 
-Opt-in and graceful: when RERANK_PROVIDER is unset/``off`` (default), or on any
-error, callers get the original (vector) order back — nothing breaks.
+Graceful by design: on any error, or when RERANK_PROVIDER is ``off``, callers get
+the original (vector) order back — nothing breaks. Default is ``cohere`` (managed,
+multilingual, no infra) since the Cohere key is already configured; Claude still
+does all the reasoning.
 
+  RERANK_PROVIDER=cohere : Cohere /rerank (rerank-v3.5, needs COHERE_API_KEY)
   RERANK_PROVIDER=local  : in-process CrossEncoder (needs sentence-transformers)
   RERANK_PROVIDER=hf     : a TEI /rerank endpoint (RERANK_ENDPOINT + HF_API_TOKEN)
+  RERANK_PROVIDER=off    : disabled (identity order)
 """
 
 from __future__ import annotations
@@ -20,14 +24,15 @@ import os
 
 import httpx
 
-RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "off").lower()
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "cohere").lower()
 _MODEL = "BAAI/bge-reranker-v2-m3"
+_COHERE_MODEL = os.getenv("COHERE_RERANK_MODEL", "rerank-v3.5")
 _TIMEOUT = httpx.Timeout(60.0)
 _model = None
 
 
 def is_enabled() -> bool:
-    return RERANK_PROVIDER in ("local", "hf")
+    return RERANK_PROVIDER in ("cohere", "local", "hf")
 
 
 def _get_local():
@@ -47,7 +52,9 @@ async def rerank(query: str, docs: list[str], *, top_k: int | None = None) -> li
     if n == 0 or not is_enabled():
         return list(range(n))[:top_k]
     try:
-        if RERANK_PROVIDER == "local":
+        if RERANK_PROVIDER == "cohere":
+            scores = await _rerank_cohere(query, docs)
+        elif RERANK_PROVIDER == "local":
             model = _get_local()
             scores = await asyncio.to_thread(
                 lambda: model.predict([(query, d) for d in docs]).tolist()
@@ -59,6 +66,25 @@ async def rerank(query: str, docs: list[str], *, top_k: int | None = None) -> li
     except Exception as exc:  # noqa: BLE001 - never let reranking break retrieval
         print(f"[rerank] falling back to vector order: {exc}")
         return list(range(n))[:top_k]
+
+
+async def _rerank_cohere(query: str, docs: list[str]) -> list[float]:
+    key = os.getenv("COHERE_API_KEY")
+    if not key:
+        raise RuntimeError("COHERE_API_KEY not set")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {"model": _COHERE_MODEL, "query": query, "documents": docs, "top_n": len(docs)}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post("https://api.cohere.com/v2/rerank", headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    # Cohere v2 returns {"results": [{"index": i, "relevance_score": s}, ...]}
+    scores = [0.0] * len(docs)
+    for item in data.get("results", []):
+        idx = item.get("index")
+        if isinstance(idx, int) and 0 <= idx < len(docs):
+            scores[idx] = float(item.get("relevance_score", 0.0))
+    return scores
 
 
 async def _rerank_hf(query: str, docs: list[str]) -> list[float]:

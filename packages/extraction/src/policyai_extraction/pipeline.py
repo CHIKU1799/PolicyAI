@@ -17,13 +17,20 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from policyai_graph.graph_ops import find_node, get_or_create_edge, get_or_create_node
+from policyai_graph.graph_ops import (
+    find_node,
+    get_or_create_edge,
+    get_or_create_node,
+    supersede_node,
+)
 from policyai_graph.models import EdgeType, Node, NodeType, RawDocument
-from policyai_graph.models_app import DEFAULT_ORG_ID, Alert, AlertKind
+from policyai_graph.models_app import DEFAULT_ORG_ID, Alert, AlertKind, Requirement
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_extraction.embeddings import embed_text
-from policyai_extraction.llm import MODEL_EXTRACTION, LLMClient
+from policyai_extraction.llm import LLMClient
+from policyai_extraction.routing import route_model
 from policyai_extraction.schemas import ExtractedRegulation
 
 _PROMPT_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
@@ -56,8 +63,11 @@ async def process_document(
         f"Published date: {raw.published_date or 'unknown'}\n\n"
         f"--- DOCUMENT TEXT ---\n{raw.raw_text[:40000]}"
     )
+    # Tag complexity and route to a right-sized model (cheap for short notices,
+    # strong for dense directions). Pre-extraction we only have length to go on.
+    extract_model, complexity = route_model("extraction", raw.raw_text)
     extracted: ExtractedRegulation = await llm.extract(
-        prompt, ExtractedRegulation, system=system, model=MODEL_EXTRACTION
+        prompt, ExtractedRegulation, system=system, model=extract_model
     )
 
     reg_key = f"{raw.source}:{raw.source_id}"
@@ -75,6 +85,27 @@ async def process_document(
             "published_date": str(raw.published_date) if raw.published_date else None,
         },
     )
+    # Enrich the node with concrete document metadata (JSONB; reassign so the ORM
+    # sees the change). Document type / number / penalties live here, not as columns.
+    reg_node.properties = {
+        **(reg_node.properties or {}),
+        "document_type": extracted.document_type,
+        "reference_number": extracted.reference_number,
+        "penalties": extracted.penalties,
+        "compliance_frequency": extracted.compliance_frequency,
+        "requirement_count": len(extracted.requirements),
+        # Tag the document with the complexity that routed its model — queryable,
+        # and reused by the mapping stage to size its (more expensive) model.
+        "complexity": complexity,
+        "extraction_model": extract_model,
+    }
+    # Valid-time anchor: prefer a stated effective date, else the publication date.
+    effective = extracted.effective_date or raw.published_date
+    if effective and reg_node.effective_from is None:
+        reg_node.effective_from = effective
+
+    # Persist the atomic requirements (clean re-run: replace any prior set).
+    await _persist_requirements(session, reg_node, extracted.requirements, org_id)
 
     # ISSUED_BY -> regulator (department if resolvable, else top-level regulator)
     issuer_key = extracted.department or extracted.regulator_key
@@ -144,6 +175,25 @@ async def process_document(
         target = await _find_regulation_by_title(session, ref.title)
         if target is not None:
             await get_or_create_edge(session, source=reg_node, target=target, edge_type=edge_type)
+            # Supersession/amendment retires the predecessor and its obligations,
+            # stamping the graph's time axis ("what got invalidated when").
+            if edge_type in (EdgeType.SUPERSEDES, EdgeType.AMENDS):
+                acted = await supersede_node(
+                    session, old=target, new=reg_node, as_of=raw.published_date
+                )
+                if acted:
+                    old_title = (target.properties or {}).get("title", ref.title)
+                    session.add(
+                        Alert(
+                            org_id=org_id,
+                            kind=AlertKind.REGULATION_SUPERSEDED.value,
+                            regulation_node_id=reg_node.id,
+                            message=(
+                                f"{extracted.title or raw.title} supersedes "
+                                f"“{old_title}” — its obligations were marked superseded"
+                            ),
+                        )
+                    )
 
     # Link the raw document, embed it, and alert.
     raw.regulation_node_id = reg_node.id
@@ -164,9 +214,30 @@ async def process_document(
     return reg_node
 
 
-async def _find_regulation_by_title(session: AsyncSession, title: str) -> Node | None:
-    from sqlalchemy import select
+async def _persist_requirements(
+    session: AsyncSession, reg_node: Node, requirements, org_id
+) -> None:
+    """Replace the regulation's atomic requirements with the freshly extracted set.
+    Idempotent across re-runs (delete-then-insert, ordered by ``seq``)."""
+    await session.execute(delete(Requirement).where(Requirement.regulation_node_id == reg_node.id))
+    for i, r in enumerate(requirements):
+        session.add(
+            Requirement(
+                org_id=org_id,
+                regulation_node_id=reg_node.id,
+                text=r.text,
+                requirement_type=r.requirement_type,
+                applies_to=r.applies_to or [],
+                frequency=r.frequency,
+                citation=r.citation,
+                evidence_expected=r.evidence_expected,
+                penalty=r.penalty,
+                seq=i,
+            )
+        )
 
+
+async def _find_regulation_by_title(session: AsyncSession, title: str) -> Node | None:
     stmt = (
         select(Node)
         .where(Node.node_type == NodeType.REGULATION.value)

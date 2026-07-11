@@ -1,0 +1,47 @@
+{
+  "rbi_mfi_pricing.txt": {
+    "regulator_key": "rbi",
+    "document_type": "master_direction",
+    "entity_classes_expected": ["nbfc_mfi"],
+    "topics_expected": ["fair_practices_code", "grievance_redressal"],
+    "min_requirements": 4,
+    "published_date": "2026-07-10",
+    "is_relevant_expected": true,
+    "profile": {
+      "entity_classes": ["nbfc_mfi"],
+      "topics": ["fair_practices_code", "kyc"],
+      "regulators": ["rbi"],
+      "notes": "Demo Microfinance Co."
+    }
+  },
+  "sebi_ria_disclosure.txt": {
+    "regulator_key": "sebi",
+    "document_type": "circular",
+    "entity_classes_expected": ["investment_adviser"],
+    "topics_expected": ["disclosure", "recordkeeping"],
+    "min_requirements": 4,
+    "published_date": "2026-09-01",
+    "is_relevant_expected": false,
+    "profile": {
+      "entity_classes": ["nbfc_mfi"],
+      "topics": ["fair_practices_code", "kyc"],
+      "regulators": ["rbi"],
+      "notes": "Demo Microfinance Co."
+    }
+  },
+  "certin_incident_reporting.txt": {
+    "regulator_key": "certin",
+    "document_type": "directive",
+    "entity_classes_expected": ["body_corporate"],
+    "topics_expected": ["cyber_security", "incident_reporting"],
+    "min_requirements": 4,
+    "published_date": "2026-06-01",
+    "is_relevant_expected": true,
+    "profile": {
+      "entity_classes": ["nbfc_mfi", "body_corporate"],
+      "topics": ["cyber_security", "kyc"],
+      "regulators": ["rbi", "certin"],
+      "notes": "Demo Microfinance Co."
+    }
+  }
+}

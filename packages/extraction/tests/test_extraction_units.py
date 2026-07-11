@@ -5,9 +5,86 @@ from __future__ import annotations
 import pytest
 from policyai_extraction import notifications
 from policyai_extraction.embeddings import EMBEDDING_DIM, EmbeddingError, _check_dims, _normalize_hf
+from policyai_extraction.grounding import content_tokens, is_grounded
 from policyai_extraction.llm import MODEL_EXTRACTION, MODEL_MAPPING, PRICING, CostTracker
 from policyai_extraction.pipeline import canonical_topic, load_prompt
 from policyai_extraction.schemas import ExtractedRegulation, ObligationMapping
+
+
+def test_routing_classifies_complexity():
+    from policyai_extraction.routing import classify_complexity
+
+    # length-driven
+    assert classify_complexity("short notice", "notification") == "low"
+    assert classify_complexity("y" * 5000, "circular") == "medium"
+    assert classify_complexity("x" * 15000, "master_direction") == "high"
+    # a dense doc type escalates a medium-length body to high
+    assert classify_complexity("z" * 5000, "master_direction") == "high"
+    # a light doc type caps a long body at medium
+    assert classify_complexity("p" * 15000, "press_release") == "medium"
+    # reference density bumps a tiny body to medium
+    assert classify_complexity("tiny", "circular", reference_count=6) == "medium"
+
+
+def test_routing_model_selection_and_toggle(monkeypatch):
+    from policyai_extraction import routing
+
+    monkeypatch.setenv("MODEL_ROUTING", "true")
+    # cheap model for trivial docs, strong model for dense ones
+    assert routing.model_for("extraction", "low") == "claude-haiku-4-5"
+    assert routing.model_for("mapping", "low") == "claude-sonnet-4-6"
+    assert routing.model_for("mapping", "high") == "claude-opus-4-8"
+    m, tag = routing.route_model("mapping", "x" * 20000, "master_direction")
+    assert m == "claude-opus-4-8" and tag == "high"
+
+    # env override wins
+    monkeypatch.setenv("MODEL_MAPPING_LOW", "claude-haiku-4-5")
+    assert routing.model_for("mapping", "low") == "claude-haiku-4-5"
+
+    # routing disabled -> stage default, no tag
+    monkeypatch.setenv("MODEL_ROUTING", "false")
+    m, tag = routing.route_model("mapping", "anything")
+    assert tag is None and m == routing.MODEL_MAPPING
+
+
+def test_ingest_helpers():
+    from datetime import date
+
+    from policyai_extraction.ingest import _content_hash, _parse_date
+
+    # content hash is stable + sensitive to title or body changes
+    assert _content_hash("T", "body") == _content_hash("T", "body")
+    assert _content_hash("T", "body") != _content_hash("T", "BODY")
+    assert _content_hash("T", "body") != _content_hash("X", "body")
+    # date parsing is forgiving
+    assert _parse_date("2026-03-14") == date(2026, 3, 14)
+    assert _parse_date("2026-03-14T00:00:00Z") == date(2026, 3, 14)
+    assert _parse_date(None) is None
+    assert _parse_date("garbage") is None
+
+
+def test_grounding_accepts_overlapping_claim():
+    req = "The lender must disclose the effective interest rate in the loan factsheet."
+    assert is_grounded("Factsheet omits the effective interest rate disclosure.", req)
+    # stemming: 'disclosure'/'disclose', 'rates'/'rate'
+    assert is_grounded("No disclosure of interest rates.", req)
+
+
+def test_grounding_rejects_hallucinated_claim():
+    req = "The lender must disclose the effective interest rate in the loan factsheet."
+    assert not is_grounded("No cryptocurrency custody desk for offshore settlement.", req)
+
+
+def test_grounding_empty_claim_is_trivially_grounded():
+    # Nothing to hallucinate -> not penalised.
+    assert is_grounded("", "anything")
+    assert is_grounded("the of a", "anything")  # only stopwords
+
+
+def test_content_tokens_drops_stopwords_and_short_words():
+    toks = content_tokens("The company must file a quarterly return.")
+    assert "quarterly" in toks and "file" in toks and "return" in toks
+    assert "the" not in toks and "must" not in toks
 
 
 def test_cost_tracker_pricing_math():

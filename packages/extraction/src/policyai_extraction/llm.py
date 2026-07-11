@@ -228,6 +228,56 @@ class LLMClient:
             messages.append({"role": "user", "content": results})
         return "".join(b.text for b in resp.content if b.type == "text")
 
+    async def converse_with_tools_stream(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+        tool_runner,
+        model: str = MODEL_MAPPING,
+        max_tokens: int = 4096,
+        max_iters: int = 6,
+    ):
+        """Async generator yielding assistant text deltas as they are produced.
+
+        Runs the same ≤max_iters tool loop as ``converse_with_tools`` but streams
+        the final answer token-by-token, so the UI shows first text in ~1s instead
+        of waiting for the whole generation. Tool-deciding turns stream too (any
+        preamble is usually empty); tools run between turns as before.
+        """
+        if self.provider == "openai_compatible":
+            # Open models: no token streaming here — emit the whole answer once.
+            text = await self._converse_openai(
+                system, messages, tools, tool_runner, max_tokens, max_iters
+            )
+            if text:
+                yield text
+            return
+        for _ in range(max_iters):
+            async with self._client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                tools=tools,
+                messages=messages,
+            ) as stream:
+                async for delta in stream.text_stream:
+                    yield delta
+                final = await stream.get_final_message()
+            self.cost.record(model, final.usage.input_tokens, final.usage.output_tokens)
+            if final.stop_reason != "tool_use":
+                return
+            messages.append({"role": "assistant", "content": final.content})
+            results = []
+            for block in final.content:
+                if block.type == "tool_use":
+                    output = await tool_runner(block.name, block.input)
+                    results.append(
+                        {"type": "tool_result", "tool_use_id": block.id, "content": output}
+                    )
+            messages.append({"role": "user", "content": results})
+
     async def _converse_openai(
         self, system, messages, tools, tool_runner, max_tokens, max_iters
     ) -> str:

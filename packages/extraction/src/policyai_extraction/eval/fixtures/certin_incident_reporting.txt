@@ -1,0 +1,32 @@
+Indian Computer Emergency Response Team (CERT-In)
+Ministry of Electronics and Information Technology
+Direction No. 20(3)/2026-CERT-In
+
+Subject: Directions on synchronisation of clocks and reporting of cyber security
+incidents under sub-section (6) of section 70B of the Information Technology Act, 2000
+
+These directions apply to all service providers, intermediaries, data centres, body
+corporates and Government organisations. They come into effect 60 days from the date
+of issue.
+
+1. Incident reporting
+1.1 Any service provider or body corporate shall report cyber security incidents to
+CERT-In within six hours of noticing such incidents or being brought to notice about
+such incidents.
+1.2 The report shall be made in the format specified by CERT-In.
+
+2. Logs
+2.1 Entities shall enable logs of all their ICT systems and maintain them securely
+for a rolling period of 180 days within Indian jurisdiction.
+
+3. Synchronisation of clocks
+3.1 All entities shall connect to the Network Time Protocol (NTP) server of the
+National Informatics Centre or the National Physical Laboratory for synchronisation
+of system clocks.
+
+4. Point of contact
+4.1 Every entity shall designate a point of contact to interface with CERT-In and
+keep the details current.
+
+Non-compliance with these directions may invite punitive action under sub-section (7)
+of section 70B of the Information Technology Act, 2000.

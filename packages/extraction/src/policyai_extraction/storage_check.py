@@ -3,6 +3,7 @@ configured backend (Supabase or R2).
 
     uv run python -m policyai_extraction.storage_check
 """
+
 from __future__ import annotations
 
 import asyncio
