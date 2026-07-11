@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from policyai_api.deps import get_session
 from policyai_api.routes import (
+    admin,
     ask,
     documents,
     graph,
@@ -45,6 +46,7 @@ app.include_router(scan.router)
 app.include_router(ask.router)
 app.include_router(timeline.router)
 app.include_router(insights.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

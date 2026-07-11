@@ -8,6 +8,7 @@ import { getSupabase } from "@/lib/supabase";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,7 +25,13 @@ export default function LoginPage() {
     setMsg(null);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // company_name lands in raw_user_meta_data; the DB trigger provisions a
+        // fresh org named from it and makes this user its admin.
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { company_name: company.trim() } },
+        });
         if (error) throw error;
         setMsg("Account created. If email confirmation is on, confirm then sign in.");
         setMode("signin");
@@ -64,6 +71,16 @@ export default function LoginPage() {
         </p>
 
         <form onSubmit={submit} className="flex flex-col gap-3">
+          {mode === "signup" && (
+            <input
+              type="text"
+              required
+              placeholder="Company name (e.g. Acme Finance)"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm outline-none focus:border-[#4b40c4]"
+            />
+          )}
           <input
             type="email"
             required

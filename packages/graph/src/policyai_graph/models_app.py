@@ -53,6 +53,24 @@ class Organization(Base):
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    # URL-safe handle for routing/display (e.g. "acme-finance"); unique when set.
+    slug: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
+    # Supabase Auth user who created the org (the founding admin).
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PlatformAdmin(Base):
+    """A platform-level super-admin (PolicyAI operator), distinct from an org's own
+    admin. Can see and manage every org. Membership here is granted deliberately,
+    never on signup. Drives the /admin console and cross-org RLS read."""
+
+    __tablename__ = "platform_admins"
+
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    email: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

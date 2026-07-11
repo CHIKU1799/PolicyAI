@@ -17,6 +17,7 @@ import {
   ChevronsUpDown,
   LogOut,
   ShieldHalf,
+  Gauge,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 
@@ -54,11 +55,19 @@ export default function Sidebar() {
   const router = useRouter();
   const [score, setScore] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabase();
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    // Show the Platform section only to platform admins (RLS lets them read their
+    // own platform_admins row).
+    supabase
+      .from("platform_admins")
+      .select("user_id")
+      .maybeSingle()
+      .then(({ data }) => setIsAdmin(!!data));
     supabase
       .from("controls")
       .select("effectiveness")
@@ -129,6 +138,15 @@ export default function Sidebar() {
             <NavItem key={i.href} {...i} />
           ))}
         </div>
+
+        {isAdmin && (
+          <>
+            <SectionLabel className="pt-4">Platform</SectionLabel>
+            <div className="flex flex-col gap-0.5">
+              <NavItem href="/admin" label="Admin Console" icon={Gauge} />
+            </div>
+          </>
+        )}
       </nav>
 
       {/* compliance score */}
@@ -136,7 +154,7 @@ export default function Sidebar() {
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[11.5px] font-semibold text-[var(--muted)]">Compliance score</span>
           <span className="text-[13px] font-extrabold text-[var(--success)]">
-            {score ?? "—"}
+            {score ?? "--"}
             <span className="text-[10px] font-semibold text-[var(--muted-2)]">/100</span>
           </span>
         </div>

@@ -66,6 +66,12 @@ db-seed:
 seed-demo:
 	uv run python -m policyai_graph.seed_demo
 
+seed-firms:
+	uv run python -m policyai_extraction.seed_demo_firms $(ARGS)
+
+seed-admin:
+	uv run python -m policyai_graph.promote_admin $(EMAIL)
+
 crawl:
 	uv run python -m policyai_scrapers.runner
 
