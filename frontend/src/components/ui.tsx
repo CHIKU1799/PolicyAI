@@ -1,15 +1,27 @@
 "use client";
 
 import clsx from "clsx";
+import { Download } from "lucide-react";
 import type { ReactNode } from "react";
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+export function ExportButton({ onClick, label = "Export CSV" }: { onClick: () => void; label?: string }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-xl font-semibold text-[var(--text)]">{title}</h1>
-      {subtitle && <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p>}
-    </div>
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#4b40c4] hover:text-slate-900"
+    >
+      <Download size={14} />
+      {label}
+    </button>
   );
+}
+
+// The Topbar now owns the page title + subtitle for every route, so the in-page
+// header is intentionally a no-op. Kept as a component so existing pages that
+// render <PageHeader/> don't need edits and stay free of duplicate titles.
+export function PageHeader(props: { title: string; subtitle?: string }) {
+  void props; // intentionally unused: the Topbar renders titles for every route
+  return null;
 }
 
 export function Kpi({

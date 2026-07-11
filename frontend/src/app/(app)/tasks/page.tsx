@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner } from "@/components/ui";
+import { toast } from "@/components/Toast";
 import {
   PRIORITY_STYLES,
   TASK_COLUMNS,
@@ -28,9 +29,17 @@ export default function TasksPage() {
   }, []);
 
   async function move(task: Task, status: TaskStatus) {
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+    const prev = task.status;
+    setTasks((cur) => cur.map((t) => (t.id === task.id ? { ...t, status } : t)));
     const supabase = getSupabase();
-    await supabase?.from("tasks").update({ status }).eq("id", task.id);
+    if (!supabase) return;
+    const { error } = await supabase.from("tasks").update({ status }).eq("id", task.id);
+    if (error) {
+      setTasks((cur) => cur.map((t) => (t.id === task.id ? { ...t, status: prev } : t)));
+      toast(`Couldn't move task: ${error.message}`, "error");
+    } else {
+      toast(`Task moved to ${status.replace(/_/g, " ")}`);
+    }
   }
 
   return (

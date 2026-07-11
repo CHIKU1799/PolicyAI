@@ -11,6 +11,17 @@ export interface Obligation {
   severity: Severity;
   status: string;
   created_at: string;
+  regulation_node_id: string | null;
+  effective_date: string | null;
+  valid_to: string | null;
+  invalidated_at: string | null;
+  obligation_type: string | null;
+  frequency: string | null;
+  regulatory_citation: string | null;
+  penalty_summary: string | null;
+  evidence_required: string | null;
+  mapping_confidence: number | null;
+  relevance_rationale: string | null;
 }
 
 export interface Task {
@@ -69,4 +80,80 @@ export const TASK_COLUMNS: { key: TaskStatus; label: string }[] = [
   { key: "in_progress", label: "In progress" },
   { key: "blocked", label: "Blocked" },
   { key: "done", label: "Done" },
+];
+
+// --- GRC entities ---
+export type Effectiveness = "effective" | "partial" | "ineffective" | "untested";
+export type GapStatus = "open" | "remediating" | "closed" | "accepted";
+export type PolicyStatus = "draft" | "in_review" | "approved" | "archived";
+
+export interface Control {
+  id: string;
+  ref_code: string | null;
+  title: string;
+  description: string | null;
+  control_type: string;
+  frequency: string | null;
+  owner: string | null;
+  effectiveness: Effectiveness;
+  last_tested_at: string | null;
+}
+
+export interface ControlTest {
+  id: string;
+  control_id: string;
+  performed_at: string | null;
+  performed_by: string | null;
+  result: string | null;
+  notes: string | null;
+}
+
+export interface Policy {
+  id: string;
+  title: string;
+  summary: string | null;
+  owner: string | null;
+  status: PolicyStatus;
+  current_version: number;
+  updated_at: string;
+}
+
+export interface Gap {
+  id: string;
+  obligation_id: string;
+  description: string;
+  severity: Severity;
+  status: GapStatus;
+  remediation_plan: string | null;
+  owner: string | null;
+  due_date: string | null;
+  created_at: string;
+}
+
+export const EFFECTIVENESS_STYLES: Record<Effectiveness, string> = {
+  effective: "bg-emerald-100 text-emerald-700",
+  partial: "bg-amber-100 text-amber-700",
+  ineffective: "bg-red-100 text-red-700",
+  untested: "bg-slate-100 text-slate-600",
+};
+
+export const GAP_STATUS_STYLES: Record<GapStatus, string> = {
+  open: "bg-red-100 text-red-700",
+  remediating: "bg-amber-100 text-amber-700",
+  closed: "bg-emerald-100 text-emerald-700",
+  accepted: "bg-slate-100 text-slate-600",
+};
+
+export const POLICY_STATUS_STYLES: Record<PolicyStatus, string> = {
+  draft: "bg-slate-100 text-slate-600",
+  in_review: "bg-amber-100 text-amber-700",
+  approved: "bg-emerald-100 text-emerald-700",
+  archived: "bg-slate-100 text-slate-500",
+};
+
+export const GAP_COLUMNS: { key: GapStatus; label: string }[] = [
+  { key: "open", label: "Open" },
+  { key: "remediating", label: "Remediating" },
+  { key: "accepted", label: "Accepted" },
+  { key: "closed", label: "Closed" },
 ];

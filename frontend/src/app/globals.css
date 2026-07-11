@@ -3,34 +3,100 @@
 @tailwind utilities;
 
 :root {
-  /* Aligned to the PolicyAI Platform reference: indigo brand, warm neutrals, green success. */
-  --bg: #f0f0ec;
-  --surface: #ffffff;
-  --border: #e6e5e0;
-  --text: #2b2e35;
+  /* Palette from the PolicyAI reference: warm neutrals, indigo, green. */
+  --bg: #f5f4f2;
+  --surface: #fcfcfb;
+  --card: #ffffff;
+  --border: #eae9e5;
+  --border-soft: #f0f0ec;
+  --hairline: #f4f4f1;
+  --text: #15161b;
+  --text-2: #3a3d44;
   --muted: #71757e;
+  --muted-2: #9a9da4;
+  --muted-3: #b6b9bf;
   --brand: #4b40c4;
-  --brand-dark: #3a2fb0;
+  --brand-2: #5b4fd6;
+  --brand-3: #4338b8;
+  --brand-ink: #3a30a8;
   --success: #1f9d5b;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   color: var(--text);
   background: var(--bg);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans), "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbars to match the soft aesthetic */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d7d7d1;
+  border-radius: 8px;
+  border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes paiSlide {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes paiPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm;
+    @apply rounded-2xl border border-[var(--border)] bg-[var(--card)];
+    box-shadow: 0 1px 2px rgba(17, 18, 27, 0.04);
+  }
+  .serif {
+    font-family: var(--font-serif), "Newsreader", Georgia, serif;
+  }
+  .mono {
+    font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
   }
   .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
+  }
+  .brand-grad {
+    background: linear-gradient(135deg, var(--brand-2), var(--brand-3));
   }
   .nav-link {
-    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white;
+    @apply flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition-colors;
+    color: #5b5e66;
+  }
+  .nav-link:hover {
+    background: #f2f2ef;
+    color: var(--text-2);
   }
   .nav-link-active {
-    @apply bg-white/10 text-white;
+    background: rgba(75, 64, 196, 0.09);
+    color: var(--brand);
+  }
+  .anim-in {
+    animation: paiSlide 0.35s ease both;
   }
 }
