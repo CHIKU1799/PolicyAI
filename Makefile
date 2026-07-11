@@ -5,7 +5,7 @@ endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
         dev-api dev-web crawl eval eval-offline eval-baseline ingest backfill \
-        export-graph backup
+        export-graph backup llm-groq llm-claude llm-status
 
 help:
 	@echo "PolicyAI — available targets:"
@@ -86,6 +86,15 @@ backup:
 
 map:
 	uv run python -m policyai_extraction.map_all
+
+llm-groq:
+	bash scripts/llm_switch.sh groq
+
+llm-claude:
+	bash scripts/llm_switch.sh claude
+
+llm-status:
+	bash scripts/llm_switch.sh status
 
 eval:
 	uv run python -m policyai_extraction.eval.run_eval
