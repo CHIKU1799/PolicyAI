@@ -144,7 +144,7 @@ async def _seed_firm(session: AsyncSession, firm: dict) -> tuple[UUID, bool]:
     return org.id, created
 
 
-async def _run(do_map: bool) -> None:
+async def _run(do_map: bool, map_limit: int) -> None:
     engine = make_engine()
     sm = make_sessionmaker(engine)
     llm = LLMClient()
@@ -161,7 +161,11 @@ async def _run(do_map: bool) -> None:
                 if do_map:
                     from policyai_extraction.map_all import map_unmapped_in_session
 
-                    mapped, skipped = await map_unmapped_in_session(session, llm, org_id=org_id)
+                    # Bound per-firm mapping so a demo run stays fast and does not
+                    # exhaust free-tier LLM rate limits; re-run to map more.
+                    mapped, skipped = await map_unmapped_in_session(
+                        session, llm, org_id=org_id, limit=map_limit
+                    )
                     log.info("  mapped=%d skipped=%d for %s", mapped, skipped, firm["name"])
         if do_map:
             log.info("LLM cost: %s", llm.cost.summary())
@@ -173,9 +177,10 @@ async def _run(do_map: bool) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Seed demo firms (orgs + profiles + policies).")
     ap.add_argument("--map", action="store_true", dest="do_map", help="also map obligations/gaps")
+    ap.add_argument("--map-limit", type=int, default=15, help="max regs to map per firm")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    asyncio.run(_run(args.do_map))
+    asyncio.run(_run(args.do_map, args.map_limit))
     return 0
 
 
