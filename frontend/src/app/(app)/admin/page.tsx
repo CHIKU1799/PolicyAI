@@ -32,6 +32,9 @@ interface Overview {
   documents: number;
   obligations: number;
   gaps: number;
+  scans: number;
+  alerts: number;
+  regulations: number;
   org_list: OrgRow[];
 }
 
@@ -67,7 +70,7 @@ export default function AdminPage() {
   if (state === "forbidden")
     return (
       <>
-        <PageHeader title="Platform Admin" subtitle="Cross-company oversight" />
+        <PageHeader title="Operator Console" subtitle="Platform team access only" />
         <EmptyState
           title="Platform admin access required"
           body="This console is limited to PolicyAI platform administrators. Ask an operator to run `make seed-admin EMAIL=you@…`."
@@ -77,14 +80,14 @@ export default function AdminPage() {
   if (state === "error")
     return (
       <>
-        <PageHeader title="Platform Admin" subtitle="Cross-company oversight" />
+        <PageHeader title="Operator Console" subtitle="Platform team access only" />
         <EmptyState title="Could not load admin data" body="The worker API was unreachable or misconfigured." />
       </>
     );
   if (state === "loading" || !data)
     return (
       <>
-        <PageHeader title="Platform Admin" subtitle="Cross-company oversight" />
+        <PageHeader title="Operator Console" subtitle="Platform team access only" />
         <div className="text-sm text-[var(--muted)]">Loading platform insights…</div>
       </>
     );
@@ -95,16 +98,37 @@ export default function AdminPage() {
     gaps: o.gaps,
   }));
 
+  const avgGaps = data.orgs ? Math.round(data.gaps / data.orgs) : 0;
+
   return (
     <>
-      <PageHeader title="Platform Admin" subtitle="Insights across every company on PolicyAI" />
+      <PageHeader
+        title="Operator Console"
+        subtitle="Platform-wide analytics across every company. Visible to the PolicyAI team only."
+      />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Kpi label="Companies" value={data.orgs} />
-        <Kpi label="Users" value={data.users} />
-        <Kpi label="Policy documents" value={data.documents} />
-        <Kpi label="Obligations" value={data.obligations} />
-        <Kpi label="Open gaps" value={data.gaps} tone={data.gaps > 0 ? "warn" : "default"} />
+      <div className="mb-4 flex items-center gap-2 rounded-lg border border-[#E4E0F7] bg-[#F8F7FE] px-3 py-2 text-[12.5px] text-[var(--brand-ink)]">
+        <span className="rounded bg-[var(--brand)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+          Team only
+        </span>
+        You are viewing cross-company data as a platform administrator. Individual companies
+        never see this page or each other&apos;s data.
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Kpi label="Companies" value={data.orgs} hint="firms onboarded" />
+        <Kpi label="Users" value={data.users} hint="across all firms" />
+        <Kpi label="Policy documents" value={data.documents} hint="uploaded by firms" />
+        <Kpi
+          label="Open gaps"
+          value={data.gaps}
+          hint={`~${avgGaps} per company`}
+          tone={data.gaps > 0 ? "warn" : "default"}
+        />
+        <Kpi label="Obligations tracked" value={data.obligations} />
+        <Kpi label="Regulations in corpus" value={data.regulations} hint="shared graph" />
+        <Kpi label="Scans run" value={data.scans} />
+        <Kpi label="Alerts fired" value={data.alerts} />
       </div>
 
       <div className="card mt-5 p-5">

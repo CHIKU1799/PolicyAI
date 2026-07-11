@@ -37,7 +37,17 @@ class AdminOverview(BaseModel):
     documents: int
     obligations: int
     gaps: int
+    scans: int
+    alerts: int
+    regulations: int
     org_list: list[OrgRow]
+
+
+async def _scalar(session: AsyncSession, sql: str) -> int:
+    try:
+        return int((await session.execute(text(sql))).scalar_one() or 0)
+    except Exception:  # noqa: BLE001 - a missing table/type shouldn't 500 the console
+        return 0
 
 
 async def _counts_by_org(session: AsyncSession, table: str) -> dict[str, int]:
@@ -83,14 +93,20 @@ async def overview(
             )
         )
 
-    total_users = (
-        await session.execute(text("select count(distinct user_id) from public.memberships"))
-    ).scalar_one()
+    total_users = await _scalar(session, "select count(distinct user_id) from public.memberships")
+    scans = await _scalar(session, "select count(*) from public.scan_runs")
+    alerts = await _scalar(session, "select count(*) from public.alerts")
+    regulations = await _scalar(
+        session, "select count(*) from public.nodes where node_type = 'regulation'"
+    )
     return AdminOverview(
         orgs=len(org_list),
-        users=int(total_users or 0),
+        users=total_users,
         documents=sum(docs.values()),
         obligations=sum(obligations.values()),
         gaps=sum(gaps.values()),
+        scans=scans,
+        alerts=alerts,
+        regulations=regulations,
         org_list=org_list,
     )
