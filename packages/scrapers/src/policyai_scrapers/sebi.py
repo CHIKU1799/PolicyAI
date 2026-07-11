@@ -33,9 +33,20 @@ class SEBIScraper(BaseScraper):
     regulator_key = "sebi"
 
     async def discover(self, page: Page) -> list[DocMeta]:
+        """Harvest circular links from the listing. In deep mode, page through the
+        JS-driven pager (``searchFormNewsList('n','-1')`` = next) up to ``max_pages``
+        so a backfill reaches older circulars, not just the first 25."""
         await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60_000)
         metas: list[DocMeta] = []
         seen: set[str] = set()
+        pages = self.max_pages if self.deep else 1
+        for page_no in range(pages):
+            if page_no > 0 and not await self._go_next(page):
+                break  # no further pages
+            await self._harvest(page, metas, seen)
+        return metas
+
+    async def _harvest(self, page: Page, metas: list[DocMeta], seen: set[str]) -> None:
         for link in await page.query_selector_all(LINK_SELECTOR):
             href = await link.get_attribute("href")
             title = (await link.inner_text()).strip()
@@ -56,7 +67,28 @@ class SEBIScraper(BaseScraper):
                     published_date=published,
                 )
             )
-        return metas
+
+    async def _go_next(self, page: Page) -> bool:
+        """Advance the JS pager by one page; return False if it didn't move."""
+        before = await self._first_href(page)
+        try:
+            await page.evaluate("searchFormNewsList('n','-1')")
+        except Exception:  # noqa: BLE001 - pager JS absent / last page
+            return False
+        try:
+            await page.wait_for_function(
+                "(prev) => { const a = document.querySelector("
+                "\"a[href*='/legal/'][href*='circular']\"); return a && a.href !== prev; }",
+                arg=before,
+                timeout=15_000,
+            )
+        except Exception:  # noqa: BLE001 - content didn't change => end of listing
+            return False
+        return True
+
+    async def _first_href(self, page: Page) -> str:
+        el = await page.query_selector(LINK_SELECTOR)
+        return (await el.get_attribute("href")) if el else ""
 
     async def fetch(self, page: Page, meta: DocMeta) -> str:
         await page.goto(meta.source_url, wait_until="domcontentloaded", timeout=60_000)

@@ -4,7 +4,7 @@ ifneq (,$(wildcard .env))
 endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
-        dev-api dev-web crawl eval eval-offline eval-baseline ingest \
+        dev-api dev-web crawl eval eval-offline eval-baseline ingest backfill \
         export-graph backup
 
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  eval-offline  Run only the offline mapping-quality suite (no API key needed)"
 	@echo "  eval-baseline Promote the latest results to the committed regression baseline"
 	@echo "  ingest        Ingest pre-fetched docs (FILE=path.jsonl) through the extraction pipeline"
+	@echo "  backfill      Deep historical crawl RBI/SEBI (ARGS='--regulator rbi --dry-run')"
 	@echo "  export-graph  Portable JSON backup of the whole compliance graph (OUT=path optional)"
 	@echo "  backup        Native pg_dump backup -> backups/db-<ts>.sql.gz"
 	@echo "  dev-api    Run the FastAPI worker locally (port 8000)"
@@ -70,6 +71,9 @@ crawl:
 
 ingest:
 	uv run python -m policyai_extraction.ingest $(FILE) $(ARGS)
+
+backfill:
+	uv run python -m policyai_scrapers.backfill $(ARGS)
 
 ingest-policies:
 	uv run python -m policyai_extraction.ingest_policies $(DIR) $(ARGS)

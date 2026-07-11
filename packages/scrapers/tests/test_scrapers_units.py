@@ -10,8 +10,11 @@ from policyai_graph.seed import MONITORING_SOURCES
 from policyai_scrapers import SCRAPER_REGISTRY
 from policyai_scrapers.base import DocMeta
 from policyai_scrapers.feed_base import parse_feed, parse_feed_date, strip_html
+from policyai_scrapers.rbi import RBIScraper, _first_date, _is_empty_notice
 from policyai_scrapers.runner import _is_due
 from policyai_scrapers.util import select_new, with_retry
+
+RBI_URL = "https://www.rbi.org.in/Scripts/NotificationUser.aspx"
 
 
 def test_registry_covers_all_seeded_sources():
@@ -115,6 +118,40 @@ async def test_with_retry_reraises_after_exhausting_attempts():
 
     with pytest.raises(TimeoutError):
         await with_retry(always_fails, attempts=2, base_delay=0.0, label="t")
+
+
+@pytest.mark.asyncio
+async def test_rbi_deep_enumerates_id_range_without_network():
+    """Deep RBI discovery with an explicit range enumerates ids and never touches the
+    page (page is only used to read the listing max when to_id is omitted)."""
+    scraper = RBIScraper(RBI_URL, deep=True, from_id=12670, to_id=12673)
+    metas = await scraper.discover(page=None)  # page unused when to_id is set
+    assert [m.source_id for m in metas] == ["12670", "12671", "12672", "12673"]
+    assert all(m.source == "rbi" and m.title == "" for m in metas)
+    assert metas[1].source_url == f"{RBI_URL}?Id=12671&Mode=0"
+
+
+@pytest.mark.asyncio
+async def test_rbi_deep_range_is_order_insensitive():
+    scraper = RBIScraper(RBI_URL, deep=True, from_id=13, to_id=10)
+    metas = await scraper.discover(page=None)
+    assert [m.source_id for m in metas] == ["10", "11", "12", "13"]
+
+
+def test_rbi_empty_notice_detection():
+    assert _is_empty_notice("") is True
+    assert _is_empty_notice("   No record found   ") is True
+    real = (
+        "The Reserve Bank of India has come across instances of unauthorised entities "
+        "offering foreign exchange trading facilities to Indian residents. " * 6
+    )
+    assert _is_empty_notice(real) is False
+
+
+def test_first_date_parses_notification_dateline():
+    assert _first_date("RBI/2024-25/25 ... dated April 24, 2024 ...") == date(2024, 4, 24)
+    assert _first_date("Issued on 15-06-2026 to all banks") == date(2026, 6, 15)
+    assert _first_date("no date anywhere here") is None
 
 
 def test_is_due_cadence_logic():

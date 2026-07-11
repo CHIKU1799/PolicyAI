@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import hashlib
 import os
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -53,9 +55,25 @@ class BaseScraper(abc.ABC):
     scraper_kind: str
     regulator_key: str
 
-    def __init__(self, base_url: str, *, backfill_months: int = 6) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        backfill_months: int = 6,
+        deep: bool = False,
+        max_pages: int = 1,
+        from_id: int | None = None,
+        to_id: int | None = None,
+    ) -> None:
         self.base_url = base_url
         self.backfill_months = backfill_months
+        # Deep/backfill knobs. Default off so cadence crawls keep their cheap
+        # "current listing only" behaviour; the backfill CLI turns these on to walk
+        # historical archives (SEBI pagination) or an id range (RBI enumeration).
+        self.deep = deep
+        self.max_pages = max_pages
+        self.from_id = from_id
+        self.to_id = to_id
         self.discovered_count = 0  # set during collect() for ScanRun observability
 
     @abc.abstractmethod
@@ -66,11 +84,10 @@ class BaseScraper(abc.ABC):
     async def fetch(self, page: Page, meta: DocMeta) -> str:
         """Return the full text of one document."""
 
-    async def collect(self, known_ids: set[str] | None = None) -> list[DocMeta]:
-        """Drive a headless browser end-to-end: discover, drop already-ingested
-        documents (the incremental watermark), then fetch each remaining doc's text
-        with retry/backoff. Per-document fetch failures are skipped, not fatal."""
-        results: list[DocMeta] = []
+    @contextlib.asynccontextmanager
+    async def _page(self) -> AsyncIterator[Page]:
+        """Yield a fresh headless page, closing the browser afterwards. One place
+        for the browser/user-agent boilerplate shared by collect() and discover_new()."""
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
@@ -81,30 +98,55 @@ class BaseScraper(abc.ABC):
             )
             page = await context.new_page()
             try:
-                discovered = await self.discover(page)
-                self.discovered_count = len(discovered)
-                fresh = select_new(discovered, known_ids)
-                log.info(
-                    "%s: discovered %d, %d new to fetch",
-                    self.scraper_kind,
-                    len(discovered),
-                    len(fresh),
-                )
-                for meta in fresh:
-                    try:
-                        await asyncio.sleep(REQUEST_DELAY)
-                        meta.raw_text = await with_retry(
-                            lambda m=meta: self.fetch(page, m),
-                            attempts=FETCH_ATTEMPTS,
-                            label=f"{self.scraper_kind}:{meta.source_id}",
-                        )
-                        if meta.raw_text.strip():
-                            results.append(meta)
-                    except Exception as exc:  # noqa: BLE001 - one bad doc shouldn't kill the run
-                        log.warning(
-                            "%s: fetch failed for %s: %s", self.scraper_kind, meta.source_url, exc
-                        )
+                yield page
             finally:
                 await context.close()
                 await browser.close()
+
+    async def discover_new(self, known_ids: set[str] | None = None) -> list[DocMeta]:
+        """Discover documents and apply the watermark, but do NOT fetch full text.
+
+        This is the cheap half of a crawl — a network-only listing/enumeration pass
+        with zero LLM cost — used by the backfill dry-run to report how many new
+        documents are reachable before committing to fetch + extract them."""
+        async with self._page() as page:
+            discovered = await self.discover(page)
+            self.discovered_count = len(discovered)
+            fresh = select_new(discovered, known_ids)
+        log.info(
+            "%s: discovered %d, %d new (no fetch)",
+            self.scraper_kind,
+            self.discovered_count,
+            len(fresh),
+        )
+        return fresh
+
+    async def collect(self, known_ids: set[str] | None = None) -> list[DocMeta]:
+        """Discover, drop already-ingested documents (the incremental watermark), then
+        fetch each remaining doc's text. Per-document fetch failures are skipped."""
+        fresh = await self.discover_new(known_ids)
+        return await self.fetch_metas(fresh)
+
+    async def fetch_metas(self, metas: list[DocMeta]) -> list[DocMeta]:
+        """Fetch full text for already-discovered metas, with retry/backoff. Empty or
+        failed fetches are dropped. ``fetch()`` may enrich title/date off the detail
+        page, so the returned metas carry whatever it set."""
+        results: list[DocMeta] = []
+        if not metas:
+            return results
+        async with self._page() as page:
+            for meta in metas:
+                try:
+                    await asyncio.sleep(REQUEST_DELAY)
+                    meta.raw_text = await with_retry(
+                        lambda m=meta: self.fetch(page, m),
+                        attempts=FETCH_ATTEMPTS,
+                        label=f"{self.scraper_kind}:{meta.source_id}",
+                    )
+                    if meta.raw_text.strip():
+                        results.append(meta)
+                except Exception as exc:  # noqa: BLE001 - one bad doc shouldn't kill the run
+                    log.warning(
+                        "%s: fetch failed for %s: %s", self.scraper_kind, meta.source_url, exc
+                    )
         return results
