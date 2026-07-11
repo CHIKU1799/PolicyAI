@@ -4,7 +4,8 @@ ifneq (,$(wildcard .env))
 endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
-        dev-api dev-web crawl
+        dev-api dev-web crawl eval eval-offline eval-baseline ingest \
+        export-graph backup
 
 help:
 	@echo "PolicyAI — available targets:"
@@ -16,6 +17,12 @@ help:
 	@echo "  db-seed    Insert regulators, entity classes, acts, monitoring sources"
 	@echo "  seed-demo  Insert a demo regulation + profile + obligation + tasks"
 	@echo "  crawl      Run one monitoring pass over all enabled sources"
+	@echo "  eval          Run full eval suite (mapping offline + extraction live), gate on regressions"
+	@echo "  eval-offline  Run only the offline mapping-quality suite (no API key needed)"
+	@echo "  eval-baseline Promote the latest results to the committed regression baseline"
+	@echo "  ingest        Ingest pre-fetched docs (FILE=path.jsonl) through the extraction pipeline"
+	@echo "  export-graph  Portable JSON backup of the whole compliance graph (OUT=path optional)"
+	@echo "  backup        Native pg_dump backup -> backups/db-<ts>.sql.gz"
 	@echo "  dev-api    Run the FastAPI worker locally (port 8000)"
 	@echo "  dev-web    Run the Next.js frontend locally (port 3000)"
 	@echo ""
@@ -60,6 +67,30 @@ seed-demo:
 
 crawl:
 	uv run python -m policyai_scrapers.runner
+
+ingest:
+	uv run python -m policyai_extraction.ingest $(FILE) $(ARGS)
+
+ingest-policies:
+	uv run python -m policyai_extraction.ingest_policies $(DIR) $(ARGS)
+
+export-graph:
+	uv run python -m policyai_graph.backup $(OUT)
+
+backup:
+	bash scripts/backup_db.sh
+
+map:
+	uv run python -m policyai_extraction.map_all
+
+eval:
+	uv run python -m policyai_extraction.eval.run_eval
+
+eval-offline:
+	uv run python -m policyai_extraction.eval.run_eval --only mapping
+
+eval-baseline:
+	uv run python -m policyai_extraction.eval.run_eval --promote
 
 storage-check:
 	uv run python -m policyai_extraction.storage_check

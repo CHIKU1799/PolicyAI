@@ -37,3 +37,7 @@ next-env.d.ts
 data/
 logs/
 *.log
+
+# Local backups and ingestion inbox (large, regenerable)
+backups/
+inbox/
