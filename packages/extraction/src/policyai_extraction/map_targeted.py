@@ -16,7 +16,7 @@ import asyncio
 import logging
 
 from policyai_graph.db import make_engine, make_sessionmaker
-from policyai_graph.models_app import DEFAULT_ORG_ID, Obligation
+from policyai_graph.models_app import DEFAULT_ORG_ID
 from sqlalchemy import text
 
 from policyai_extraction.dbretry import is_transient
