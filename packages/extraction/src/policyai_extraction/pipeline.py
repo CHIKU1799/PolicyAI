@@ -29,7 +29,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_extraction.embeddings import embed_text
-from policyai_extraction.llm import LLMClient
+from policyai_extraction.llm import LLMClient, is_payload_too_large
 from policyai_extraction.routing import route_model
 from policyai_extraction.schemas import ExtractedRegulation
 
@@ -57,18 +57,31 @@ async def process_document(
 ) -> Node:
     """Extract + upsert one document. Returns the regulation Node. Caller commits."""
     system = load_prompt("regulation_extraction_v1.md")
-    prompt = (
-        f"Document title: {raw.title}\n"
-        f"Source: {raw.source}\n"
-        f"Published date: {raw.published_date or 'unknown'}\n\n"
-        f"--- DOCUMENT TEXT ---\n{raw.raw_text[:40000]}"
-    )
     # Tag complexity and route to a right-sized model (cheap for short notices,
     # strong for dense directions). Pre-extraction we only have length to go on.
     extract_model, complexity = route_model("extraction", raw.raw_text)
-    extracted: ExtractedRegulation = await llm.extract(
-        prompt, ExtractedRegulation, system=system, model=extract_model
-    )
+    # Free-tier providers (Groq) cap tokens per request; a dense master direction
+    # at the full 40k-char clip can exceed it. Degrade the clip instead of failing:
+    # the head of a circular carries the title, applicability, and most substantive
+    # requirements, so a truncated extraction beats no extraction.
+    extracted: ExtractedRegulation | None = None
+    for clip in (40000, 24000, 12000):
+        prompt = (
+            f"Document title: {raw.title}\n"
+            f"Source: {raw.source}\n"
+            f"Published date: {raw.published_date or 'unknown'}\n\n"
+            f"--- DOCUMENT TEXT ---\n{raw.raw_text[:clip]}"
+        )
+        try:
+            extracted = await llm.extract(
+                prompt, ExtractedRegulation, system=system, model=extract_model
+            )
+            break
+        except Exception as exc:
+            if is_payload_too_large(exc) and clip > 12000 and len(raw.raw_text) > 12000:
+                continue
+            raise
+    assert extracted is not None
 
     reg_key = f"{raw.source}:{raw.source_id}"
     reg_node = await get_or_create_node(

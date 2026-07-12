@@ -17,6 +17,7 @@ from policyai_graph.models import Node, NodeType
 from policyai_graph.models_app import (
     DEFAULT_ORG_ID,
     Control,
+    CoverageStatus,
     Effectiveness,
     Gap,
     GapStatus,
@@ -179,6 +180,15 @@ async def compute_insights(session: AsyncSession, org_id: UUID = DEFAULT_ORG_ID)
     )
 
     catalog = [
+        dict(
+            key="policy_conflicts",
+            count=policy_conflicts,
+            severity="critical",
+            label="Policy conflicts",
+            description="Your own policies contradict a live regulation — direct penalty exposure.",
+            action_label="Resolve conflicts",
+            action_href="/gaps",
+        ),
         dict(
             key="overdue_gaps",
             count=overdue_gaps,

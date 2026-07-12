@@ -39,6 +39,43 @@ PRICING: dict[str, tuple[float, float]] = {
 MODEL_EXTRACTION = os.getenv("ANTHROPIC_MODEL_EXTRACTION", "claude-sonnet-4-6")
 MODEL_MAPPING = os.getenv("ANTHROPIC_MODEL_MAPPING", "claude-opus-4-8")
 
+
+def is_payload_too_large(exc: Exception) -> bool:
+    """A 413 'request too large' from an OpenAI-compatible gateway (Groq et al)."""
+    msg = str(exc)
+    return "413" in msg and ("Request too large" in msg or "reduce your message size" in msg)
+
+
+def _drop_nulls(value):
+    if isinstance(value, dict):
+        return {k: _drop_nulls(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_drop_nulls(v) for v in value]
+    return value
+
+
+def _recover_failed_tool_call(exc: Exception, schema: type[T]) -> T | None:
+    """Groq validates forced-tool arguments server-side and 400s on near-misses
+    (a missing field, ``null`` where the schema wants ``[]``) while embedding the
+    raw generation in the error body. Recover it: parse the JSON, drop nulls so
+    Pydantic defaults apply, backfill a missing summary, and validate locally.
+    Returns None when the error carries no usable generation."""
+    body = getattr(exc, "body", None)
+    err = body.get("error", body) if isinstance(body, dict) else {}
+    failed = err.get("failed_generation") if isinstance(err, dict) else None
+    if not failed or err.get("code") != "tool_use_failed":
+        return None
+    start, end = failed.find("{"), failed.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        data = _drop_nulls(json.loads(failed[start : end + 1]))
+        if "summary" in schema.model_fields and "summary" not in data:
+            data["summary"] = data.get("title", "")
+        return schema.model_validate(data)
+    except Exception:  # noqa: BLE001 - unrecoverable generation; surface the original error
+        return None
+
 # Open-source / OpenAI-compatible config (used when LLM_PROVIDER=openai_compatible).
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://router.huggingface.co/v1")
 OPENAI_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
@@ -160,13 +197,31 @@ class LLMClient:
             messages = ([{"role": "system", "content": system}] if system else []) + [
                 {"role": "user", "content": prompt}
             ]
-            resp = await self._oai.chat.completions.create(
-                model=self._model,
-                max_tokens=max_tokens,
-                messages=messages,
-                tools=[_to_openai_tool(tool_name, description, schema.model_json_schema())],
-                tool_choice={"type": "function", "function": {"name": tool_name}},
-            )
+            # Free-tier gateways (Groq) count max_tokens toward the per-request
+            # token cap, so an 8k completion budget can 413 a modest prompt.
+            # Shrink the budget before giving up; the caller's input-clip
+            # fallback handles genuinely oversized prompts.
+            budget = max_tokens
+            while True:
+                try:
+                    resp = await self._oai.chat.completions.create(
+                        model=self._model,
+                        max_tokens=budget,
+                        messages=messages,
+                        tools=[
+                            _to_openai_tool(tool_name, description, schema.model_json_schema())
+                        ],
+                        tool_choice={"type": "function", "function": {"name": tool_name}},
+                    )
+                    break
+                except Exception as exc:
+                    if is_payload_too_large(exc) and budget > 2048:
+                        budget //= 2
+                        continue
+                    recovered = _recover_failed_tool_call(exc, schema)
+                    if recovered is not None:
+                        return recovered
+                    raise
             self._record_openai(resp)
             calls = resp.choices[0].message.tool_calls or []
             if not calls:
