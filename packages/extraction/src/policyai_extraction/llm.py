@@ -76,9 +76,27 @@ def _recover_failed_tool_call(exc: Exception, schema: type[T]) -> T | None:
     except Exception:  # noqa: BLE001 - unrecoverable generation; surface the original error
         return None
 
+
 # Open-source / OpenAI-compatible config (used when LLM_PROVIDER=openai_compatible).
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://router.huggingface.co/v1")
 OPENAI_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+# Per-request token ceiling enforced by the gateway (input + max_tokens). Groq's
+# free tier rejects anything over its TPM limit with a 413, and its retry-after
+# on those is 30-60s, so *proactively* sizing requests under the cap is worth
+# far more than reactive retries. 0 disables the cap (HF/Together/paid Groq).
+OPENAI_TPM_LIMIT = int(
+    os.getenv("OPENAI_TPM_LIMIT", "12000" if "groq" in OPENAI_BASE_URL.lower() else "0")
+)
+
+
+def _fit_budget(messages: list[dict], schema_json: str, max_tokens: int) -> int:
+    """Cap the completion budget so input + output stays under the gateway's
+    per-request token limit. Chars/3 over-estimates tokens for English text,
+    which is the safe direction."""
+    if not OPENAI_TPM_LIMIT:
+        return max_tokens
+    est_input = (sum(len(str(m.get("content") or "")) for m in messages) + len(schema_json)) // 3
+    return max(1024, min(max_tokens, OPENAI_TPM_LIMIT - est_input - 256))
 
 
 @dataclass
@@ -199,18 +217,18 @@ class LLMClient:
             ]
             # Free-tier gateways (Groq) count max_tokens toward the per-request
             # token cap, so an 8k completion budget can 413 a modest prompt.
-            # Shrink the budget before giving up; the caller's input-clip
+            # Size the request under the cap up front, then shrink the budget on
+            # a 413 anyway (the estimate can undershoot); the caller's input-clip
             # fallback handles genuinely oversized prompts.
-            budget = max_tokens
+            schema_json = json.dumps(schema.model_json_schema())
+            budget = _fit_budget(messages, schema_json, max_tokens)
             while True:
                 try:
                     resp = await self._oai.chat.completions.create(
                         model=self._model,
                         max_tokens=budget,
                         messages=messages,
-                        tools=[
-                            _to_openai_tool(tool_name, description, schema.model_json_schema())
-                        ],
+                        tools=[_to_openai_tool(tool_name, description, schema.model_json_schema())],
                         tool_choice={"type": "function", "function": {"name": tool_name}},
                     )
                     break

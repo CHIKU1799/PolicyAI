@@ -29,7 +29,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_extraction.embeddings import embed_text
-from policyai_extraction.llm import LLMClient, is_payload_too_large
+from policyai_extraction.llm import OPENAI_TPM_LIMIT, LLMClient, is_payload_too_large
 from policyai_extraction.routing import route_model
 from policyai_extraction.schemas import ExtractedRegulation
 
@@ -61,11 +61,17 @@ async def process_document(
     # strong for dense directions). Pre-extraction we only have length to go on.
     extract_model, complexity = route_model("extraction", raw.raw_text)
     # Free-tier providers (Groq) cap tokens per request; a dense master direction
-    # at the full 40k-char clip can exceed it. Degrade the clip instead of failing:
-    # the head of a circular carries the title, applicability, and most substantive
-    # requirements, so a truncated extraction beats no extraction.
+    # at the full 40k-char clip can exceed it. Start under the provider's cap
+    # (chars ~ 3x tokens, minus ~4.2k tokens of system prompt/schema/output) and
+    # degrade further instead of failing: the head of a circular carries the
+    # title, applicability, and most substantive requirements, so a truncated
+    # extraction beats no extraction.
+    if OPENAI_TPM_LIMIT:
+        clips = (min(40000, max(12000, (OPENAI_TPM_LIMIT - 4200) * 3)), 12000, 6000)
+    else:
+        clips = (40000, 24000, 12000)
     extracted: ExtractedRegulation | None = None
-    for clip in (40000, 24000, 12000):
+    for clip in clips:
         prompt = (
             f"Document title: {raw.title}\n"
             f"Source: {raw.source}\n"
@@ -78,7 +84,7 @@ async def process_document(
             )
             break
         except Exception as exc:
-            if is_payload_too_large(exc) and clip > 12000 and len(raw.raw_text) > 12000:
+            if is_payload_too_large(exc) and clip != clips[-1] and len(raw.raw_text) > clips[-1]:
                 continue
             raise
     assert extracted is not None
