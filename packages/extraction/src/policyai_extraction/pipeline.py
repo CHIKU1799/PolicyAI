@@ -163,7 +163,13 @@ async def process_document(
 
     # HAS_DEADLINE -> deadline nodes
     for dl in extracted.deadlines:
-        dl_key = f"{reg_key}:deadline:{canonical_topic(dl.description)[:48]}"
+        # Open models sometimes leave description empty; fall back to the
+        # relative phrasing, and skip deadlines that carry no signal at all.
+        if not dl.description and dl.relative_text:
+            dl.description = dl.relative_text
+        if not dl.description and not dl.due_date:
+            continue
+        dl_key = f"{reg_key}:deadline:{canonical_topic(dl.description or str(dl.due_date))[:48]}"
         deadline = await get_or_create_node(
             session,
             node_type=NodeType.DEADLINE,

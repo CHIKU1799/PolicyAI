@@ -17,7 +17,9 @@ from pydantic import BaseModel, Field
 
 
 class ExtractedDeadline(BaseModel):
-    description: str = Field(description="What must be done by this date.")
+    # Open models sometimes omit the description (or put it in relative_text);
+    # default to "" and let the pipeline fall back / skip rather than fail the doc.
+    description: str = Field(default="", description="What must be done by this date.")
     due_date: date | None = Field(
         default=None,
         description="Absolute calendar date resolved against the document's "

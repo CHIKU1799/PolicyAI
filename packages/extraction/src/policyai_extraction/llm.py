@@ -54,6 +54,40 @@ def _drop_nulls(value):
     return value
 
 
+def _validate_with_repair(schema: type[T], data: dict) -> T:
+    """Validate a near-miss generation, repairing what's safely repairable:
+    backfill a missing summary from the title, then prune individual list items
+    that fail validation (a reference without a title, a malformed deadline)
+    rather than failing the whole document. Re-raises when the remaining errors
+    are not item-local."""
+    from pydantic import ValidationError
+
+    if "summary" in schema.model_fields and "summary" not in data:
+        data["summary"] = data.get("title", "")
+    for _ in range(10):
+        try:
+            return schema.model_validate(data)
+        except ValidationError as ve:
+            targets: set[tuple[tuple, int]] = set()
+            for err in ve.errors():
+                loc = err["loc"]
+                idx_pos = max((i for i, p in enumerate(loc) if isinstance(p, int)), default=None)
+                if idx_pos is not None:
+                    targets.add((tuple(loc[:idx_pos]), loc[idx_pos]))
+            if not targets:
+                raise
+            for path, idx in sorted(targets, key=lambda t: t[1], reverse=True):
+                node: object = data
+                try:
+                    for p in path:
+                        node = node[p]  # type: ignore[index]
+                    if isinstance(node, list) and 0 <= idx < len(node):
+                        node.pop(idx)
+                except (KeyError, IndexError, TypeError):
+                    raise ve from None
+    raise ValueError(f"could not repair {schema.__name__} generation")
+
+
 def _recover_failed_tool_call(exc: Exception, schema: type[T]) -> T | None:
     """Groq validates forced-tool arguments server-side and 400s on near-misses
     (a missing field, ``null`` where the schema wants ``[]``) while embedding the
@@ -70,9 +104,7 @@ def _recover_failed_tool_call(exc: Exception, schema: type[T]) -> T | None:
         return None
     try:
         data = _drop_nulls(json.loads(failed[start : end + 1]))
-        if "summary" in schema.model_fields and "summary" not in data:
-            data["summary"] = data.get("title", "")
-        return schema.model_validate(data)
+        return _validate_with_repair(schema, data)
     except Exception:  # noqa: BLE001 - unrecoverable generation; surface the original error
         return None
 
@@ -244,7 +276,14 @@ class LLMClient:
             calls = resp.choices[0].message.tool_calls or []
             if not calls:
                 raise ValueError(f"Model did not return a '{tool_name}' function call")
-            return schema.model_validate_json(calls[0].function.arguments)
+            args_json = calls[0].function.arguments
+            try:
+                return schema.model_validate_json(args_json)
+            except Exception:
+                # Gateways without server-side tool validation (Cerebras et al)
+                # hand us near-miss JSON directly: drop nulls so Pydantic defaults
+                # apply, then repair item-local misses. Re-raises if still invalid.
+                return _validate_with_repair(schema, _drop_nulls(json.loads(args_json)))
 
         tool = {
             "name": tool_name,

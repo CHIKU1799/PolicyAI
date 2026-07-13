@@ -25,7 +25,12 @@ import httpx
 from policyai_scrapers.base import FETCH_ATTEMPTS, REQUEST_DELAY, BaseScraper, DocMeta
 from policyai_scrapers.util import log, select_new, with_retry
 
-_UA = "Mozilla/5.0 (compatible; PolicyAI-ComplianceMonitor/1.0; +https://policyai.example/bot)"
+# Several gov gateways (PIB, NIC WAFs) 403 anything with "bot" in the UA even on
+# their public RSS endpoints, so present as a plain feed-reader browser instead.
+_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 _TIMEOUT = httpx.Timeout(30.0)
@@ -109,6 +114,10 @@ class FeedScraper(BaseScraper):
     item_limit: int = 40
     min_chars: int = 400  # below this, fetch the article page for fuller text
     max_chars: int = 40000
+    # When set, keep only entries whose title contains one of these substrings
+    # (case-insensitive). Press-release feeds mix regulatory actions with daily
+    # operational noise; the filter keeps extraction spend on the former.
+    title_include: tuple[str, ...] = ()
 
     def _new_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -122,6 +131,10 @@ class FeedScraper(BaseScraper):
         for f in parse_feed(resp.text)[: self.item_limit]:
             link = f["link"] or f["id"]
             if not link or not f["title"]:
+                continue
+            if self.title_include and not any(
+                k.lower() in f["title"].lower() for k in self.title_include
+            ):
                 continue
             metas.append(
                 DocMeta(

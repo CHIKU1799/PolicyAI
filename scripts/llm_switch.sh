@@ -74,7 +74,7 @@ case "$MODE" in
     use_openai_compatible Groq "https://api.groq.com/openai/v1" "llama-3.3-70b-versatile" GROQ_API_KEY "https://console.groq.com/keys" 12000
     ;;
   cerebras)
-    use_openai_compatible Cerebras "https://api.cerebras.ai/v1" "llama-3.3-70b" CEREBRAS_API_KEY "https://cloud.cerebras.ai" 60000
+    use_openai_compatible Cerebras "https://api.cerebras.ai/v1" "gpt-oss-120b" CEREBRAS_API_KEY "https://cloud.cerebras.ai" 60000
     ;;
   gemini)
     use_openai_compatible Gemini "https://generativelanguage.googleapis.com/v1beta/openai/" "gemini-2.5-flash" GEMINI_API_KEY "https://aistudio.google.com/apikey" 0

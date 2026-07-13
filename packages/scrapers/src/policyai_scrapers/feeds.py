@@ -14,10 +14,29 @@ from policyai_scrapers.feed_base import FeedScraper
 
 
 class RBIPressFeed(FeedScraper):
-    """RBI press releases / master directions RSS (lighter than the HTML scraper)."""
+    """RBI press releases RSS. The feed mixes daily operational noise (money
+    market ops, auction results) with real regulatory actions; the title filter
+    keeps only the latter so extraction spend goes to documents that matter."""
 
     scraper_kind = "rbi_press_rss"
     regulator_key = "rbi"
+    title_include = (
+        "direction",
+        "circular",
+        "guideline",
+        "regulation",
+        "penalty",
+        "monetary policy",
+        "framework",
+        "master",
+        "notification",
+        "amendment",
+        "kyc",
+        "licence",
+        "license",
+        "authorisation",
+        "cancel",
+    )
 
 
 class PIBFeed(FeedScraper):
