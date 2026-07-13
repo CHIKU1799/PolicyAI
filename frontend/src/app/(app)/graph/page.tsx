@@ -137,6 +137,34 @@ export default function GraphPage() {
     [data],
   );
 
+  // Degree map + adjacency, for hub-sized nodes and hover highlighting.
+  const { degree, neighbors } = useMemo(() => {
+    const deg = new Map<string, number>();
+    const adj = new Map<string, Set<string>>();
+    for (const l of data.links) {
+      deg.set(l.source, (deg.get(l.source) ?? 0) + 1);
+      deg.set(l.target, (deg.get(l.target) ?? 0) + 1);
+      if (!adj.has(l.source)) adj.set(l.source, new Set());
+      if (!adj.has(l.target)) adj.set(l.target, new Set());
+      adj.get(l.source)!.add(l.target);
+      adj.get(l.target)!.add(l.source);
+    }
+    return { degree: deg, neighbors: adj };
+  }, [data]);
+
+  const [hover, setHover] = useState<GNode | null>(null);
+  // force-graph rewrites link endpoints from ids to node objects once mounted
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const endId = (e: any): string => (typeof e === "object" && e ? e.id : e);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const touchesFocus = (l: any) => {
+    const focus = hover?.id ?? (center ? data.nodes.find((n) => n.key === center)?.id : undefined);
+    if (!focus) return false;
+    return endId(l.source) === focus || endId(l.target) === focus;
+  };
+  const nodeRadius = (id: string, isCenter: boolean) =>
+    Math.min(13, 3.5 + 1.7 * Math.sqrt(degree.get(id) ?? 1)) + (isCenter ? 2 : 0);
+
   const pick = useCallback((key: string) => {
     setCenter(key);
     setQuery("");
@@ -263,31 +291,92 @@ export default function GraphPage() {
               height={size.h}
               backgroundColor="#ffffff"
               nodeRelSize={5}
-              linkColor={() => "#cbd5e1"}
+              autoPauseRedraw={false}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              linkColor={(l: any) => {
+                if (touchesFocus(l)) return "rgba(75,64,196,0.55)";
+                return hover ? "rgba(203,213,225,0.25)" : "#d7dde7";
+              }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              linkWidth={(l: any) => (touchesFocus(l) ? 1.8 : 1)}
               linkDirectionalArrowLength={3}
+              // a slow pulse of particles along the focused node's relationships
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              linkDirectionalParticles={(l: any) => (touchesFocus(l) ? 2 : 0)}
+              linkDirectionalParticleSpeed={0.004}
+              linkDirectionalParticleWidth={2.2}
+              linkDirectionalParticleColor={() => "#4b40c4"}
               cooldownTicks={120}
               onEngineStop={() => graphRef.current?.zoomToFit(400, 40)}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onNodeClick={(node: any) => setSelected(node as GNode)}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onNodeHover={(node: any) => setHover((node as GNode) ?? null)}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
+                if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
                 const color = TYPE_COLOR[node.type] ?? "#64748b";
                 const isSel = selected?.id === node.id;
                 const isCenter = node.key && node.key === center;
+                const isHover = hover?.id === node.id;
+                const dimmed =
+                  hover !== null && !isHover && !(neighbors.get(hover.id)?.has(node.id) ?? false);
+                const r = nodeRadius(node.id, Boolean(isCenter));
+
+                ctx.globalAlpha = dimmed ? 0.16 : 1;
+                // soft halo behind hubs and the focus node
+                if ((isCenter || isHover || isSel) && !dimmed) {
+                  const halo = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r * 2.4);
+                  halo.addColorStop(0, `${color}33`);
+                  halo.addColorStop(1, `${color}00`);
+                  ctx.fillStyle = halo;
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, r * 2.4, 0, 2 * Math.PI);
+                  ctx.fill();
+                }
                 ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, isCenter ? 8 : 5, 0, 2 * Math.PI);
+                ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
                 ctx.fill();
+                // 2px surface ring separates overlapping marks
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.6 / scale;
+                ctx.stroke();
                 if (isSel || isCenter) {
                   ctx.strokeStyle = "#0f1b2d";
-                  ctx.lineWidth = 1.5 / scale;
+                  ctx.lineWidth = 1.6 / scale;
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, r + 2.4 / scale, 0, 2 * Math.PI);
                   ctx.stroke();
                 }
-                if (scale > 1.2 || isSel || isCenter) {
-                  ctx.fillStyle = "#0f1b2d";
-                  ctx.font = `${10 / scale}px sans-serif`;
-                  ctx.fillText(node.label, node.x + 7, node.y + 3);
+
+                const isHub = (degree.get(node.id) ?? 0) >= 12;
+                if ((scale > 1.3 || isSel || isCenter || isHover || isHub) && !dimmed) {
+                  const label: string =
+                    node.label.length > 44 ? `${node.label.slice(0, 42)}…` : node.label;
+                  const fontSize = Math.max(10 / scale, 3.2);
+                  ctx.font = `${isCenter || isHover ? 600 : 400} ${fontSize}px 'Hanken Grotesk', sans-serif`;
+                  const w = ctx.measureText(label).width;
+                  const px = 4 / scale;
+                  const x = node.x + r + 4 / scale;
+                  const y = node.y;
+                  ctx.fillStyle = "rgba(255,255,255,0.88)";
+                  ctx.beginPath();
+                  ctx.roundRect(x - px, y - fontSize / 2 - px, w + px * 2, fontSize + px * 2, 3 / scale);
+                  ctx.fill();
+                  ctx.fillStyle = "#1e293b";
+                  ctx.textBaseline = "middle";
+                  ctx.fillText(label, x, y);
                 }
+                ctx.globalAlpha = 1;
+              }}
+              // keep the click/hover target as big as the drawn mark
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              nodePointerAreaPaint={(node: any, paintColor: string, ctx: CanvasRenderingContext2D) => {
+                ctx.fillStyle = paintColor;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, nodeRadius(node.id, node.key === center) + 2, 0, 2 * Math.PI);
+                ctx.fill();
               }}
             />
           )}
