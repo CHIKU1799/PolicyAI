@@ -10,7 +10,7 @@ import {
   History,
   ArrowRight,
 } from "lucide-react";
-import { getSupabase, WORKER_URL } from "@/lib/supabase";
+import { getSupabase, workerFetch } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner, EmptyState, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { downloadCSV } from "@/lib/export";
@@ -441,7 +441,7 @@ function ObligationTimeline({ regulationNodeId }: { regulationNodeId: string | n
       return;
     }
     let alive = true;
-    fetch(`${WORKER_URL}/timeline/${regulationNodeId}`)
+    workerFetch(`/timeline/${regulationNodeId}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: TimelineData) => alive && (setData(d), setState("ready")))
       .catch(() => alive && setState("error"));

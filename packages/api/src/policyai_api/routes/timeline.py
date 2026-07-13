@@ -13,7 +13,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from policyai_graph.models import Node, NodeType
 from policyai_graph.models_app import (
-    DEFAULT_ORG_ID,
     AuditEvent,
     Gap,
     GapStatus,
@@ -25,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_session
 
 router = APIRouter(prefix="/timeline", tags=["timeline"])
@@ -115,7 +115,8 @@ class AsOfSnapshot(BaseModel):
 @router.get("/as-of/{as_of}", response_model=AsOfSnapshot)
 async def as_of_snapshot(
     as_of: date,
-    org_id: UUID = DEFAULT_ORG_ID,
+    org_id: UUID | None = None,
+    principal: Principal = Depends(resolve_principal),
     limit: int = 200,
     session: AsyncSession = Depends(get_session),
 ) -> AsOfSnapshot:
@@ -126,6 +127,7 @@ async def as_of_snapshot(
     (or future-dated) day, by filtering on the valid-time interval rather than the
     ``is_current`` flag. Half-open intervals: a record ending on ``as_of`` is out.
     """
+    org_id = effective_org(principal, org_id)
     reg_rows = (
         (
             await session.execute(

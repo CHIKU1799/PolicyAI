@@ -105,3 +105,12 @@ async def require_platform_admin(
     if not principal.is_platform_admin:
         raise HTTPException(status_code=403, detail="platform admin required")
     return principal
+
+
+def effective_org(principal: Principal, requested: UUID | None = None) -> UUID:
+    """The org a request may act on. Platform admins may target any org they
+    name; everyone else is pinned to the org resolved from their token, no
+    matter what the client sent."""
+    if requested is not None and principal.is_platform_admin:
+        return requested
+    return principal.org_id

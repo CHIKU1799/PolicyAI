@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import clsx from "clsx";
-import { WORKER_URL } from "@/lib/supabase";
+import { workerFetch } from "@/lib/supabase";
 
 export default function ScanButton() {
   const [busy, setBusy] = useState(false);
@@ -13,7 +13,7 @@ export default function ScanButton() {
     setBusy(true);
     setMsg(null);
     try {
-      const resp = await fetch(`${WORKER_URL}/scan`, { method: "POST" });
+      const resp = await workerFetch("/scan", { method: "POST" });
       if (!resp.ok) throw new Error(`worker responded ${resp.status}`);
       setMsg("Scan started — new items will appear as they're processed.");
     } catch (err) {

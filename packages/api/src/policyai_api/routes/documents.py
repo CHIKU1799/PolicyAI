@@ -13,11 +13,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from policyai_extraction.embeddings import embed_text
-from policyai_graph.models_app import DEFAULT_ORG_ID, CompanyDocument, DocumentStatus
+from policyai_graph.models_app import CompanyDocument, DocumentStatus
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import download_from_storage, get_session
 from policyai_api.textextract import extract_text
 
@@ -28,7 +29,7 @@ class ProcessRequest(BaseModel):
     storage_path: str
     filename: str
     mime: str | None = None
-    org_id: UUID = DEFAULT_ORG_ID
+    org_id: UUID | None = None  # honored only for platform admins
 
 
 class ProcessResponse(BaseModel):
@@ -39,8 +40,11 @@ class ProcessResponse(BaseModel):
 
 @router.post("/process", response_model=ProcessResponse)
 async def process_document(
-    req: ProcessRequest, session: AsyncSession = Depends(get_session)
+    req: ProcessRequest,
+    session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(resolve_principal),
 ) -> ProcessResponse:
+    org_id = effective_org(principal, req.org_id)
     try:
         content = await download_from_storage(req.storage_path)
     except Exception as exc:  # noqa: BLE001
@@ -52,12 +56,12 @@ async def process_document(
     existing = (
         await session.execute(
             select(CompanyDocument).where(
-                CompanyDocument.org_id == req.org_id,
+                CompanyDocument.org_id == org_id,
                 CompanyDocument.content_hash == content_hash,
             )
         )
     ).scalar_one_or_none()
-    doc = existing or CompanyDocument(org_id=req.org_id)
+    doc = existing or CompanyDocument(org_id=org_id)
     doc.storage_path = req.storage_path
     doc.filename = req.filename
     doc.mime = req.mime

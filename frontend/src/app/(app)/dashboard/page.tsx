@@ -12,7 +12,7 @@ import {
   Sparkles,
   ChevronRight,
 } from "lucide-react";
-import { getSupabase, WORKER_URL } from "@/lib/supabase";
+import { getSupabase, workerFetch } from "@/lib/supabase";
 import ScanButton from "@/components/ScanButton";
 import type { Obligation, Gap, Control, Task, Alert, Severity } from "@/lib/types";
 
@@ -66,7 +66,7 @@ export default function DashboardPage() {
   useEffect(() => {
     // Canonical, server-computed insights (richer than the client fallback below):
     // includes unmapped regulations, uncovered requirements, low-confidence mappings.
-    fetch(`${WORKER_URL}/insights`)
+    workerFetch("/insights")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
         setServerInsights(d.insights ?? []);

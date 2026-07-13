@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSupabase, WORKER_URL } from "@/lib/supabase";
+import { getSupabase, workerFetch } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { downloadCSV } from "@/lib/export";
@@ -13,7 +13,7 @@ export default function GapsPage() {
   const [coverage, setCoverage] = useState<{ pct: number | null; covered: number; applicable: number; uncovered: number } | null>(null);
 
   useEffect(() => {
-    fetch(`${WORKER_URL}/insights`)
+    workerFetch("/insights")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => setCoverage(d.coverage ?? null))
       .catch(() => setCoverage(null));

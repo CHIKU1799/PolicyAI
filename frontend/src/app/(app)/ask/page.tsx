@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Send, ExternalLink, Sparkles } from "lucide-react";
-import { WORKER_URL } from "@/lib/supabase";
+import { workerFetch } from "@/lib/supabase";
 import ImpactAssessment from "@/components/ImpactAssessment";
 import Markdown from "@/components/Markdown";
 
@@ -44,7 +44,7 @@ export default function AskPage() {
     setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: "" }]);
     setBusy(true);
     try {
-      const resp = await fetch(`${WORKER_URL}/ask/stream`, {
+      const resp = await workerFetch("/ask/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
@@ -91,7 +91,7 @@ export default function AskPage() {
     } catch {
       // Fall back to the non-streaming endpoint if streaming is unavailable.
       try {
-        const resp = await fetch(`${WORKER_URL}/ask`, {
+        const resp = await workerFetch("/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: q }),

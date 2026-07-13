@@ -10,10 +10,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from policyai_extraction.insights import compute_insights
-from policyai_graph.models_app import DEFAULT_ORG_ID
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_session
 
 router = APIRouter(prefix="/insights", tags=["insights"])
@@ -46,7 +46,10 @@ class InsightsResponse(BaseModel):
 
 @router.get("", response_model=InsightsResponse)
 async def insights(
-    org_id: UUID = DEFAULT_ORG_ID,
+    org_id: UUID | None = None,
     session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(resolve_principal),
 ) -> InsightsResponse:
-    return InsightsResponse(**await compute_insights(session, org_id))
+    # Org comes from the verified token; a client-supplied org_id is honored
+    # only for platform admins (the operator console inspecting a firm).
+    return InsightsResponse(**await compute_insights(session, effective_org(principal, org_id)))

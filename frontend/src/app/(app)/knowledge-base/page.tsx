@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { UploadCloud, FileText, Sparkles } from "lucide-react";
-import { getSupabase, KB_BUCKET, WORKER_URL } from "@/lib/supabase";
+import { getSupabase, KB_BUCKET, workerFetch } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner } from "@/components/ui";
 import type { CompanyDocument } from "@/lib/types";
 
@@ -46,7 +46,7 @@ export default function KnowledgeBasePage() {
       const path = `${Date.now()}-${file.name}`;
       const { error } = await supabase.storage.from(KB_BUCKET).upload(path, file);
       if (error) throw error;
-      const resp = await fetch(`${WORKER_URL}/documents/process`, {
+      const resp = await workerFetch("/documents/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ storage_path: path, filename: file.name, mime: file.type }),
@@ -65,7 +65,7 @@ export default function KnowledgeBasePage() {
     setBusy(true);
     setMsg(null);
     try {
-      const resp = await fetch(`${WORKER_URL}/profile/derive`, {
+      const resp = await workerFetch("/profile/derive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

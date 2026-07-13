@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, FileSearch, X } from "lucide-react";
-import { WORKER_URL } from "@/lib/supabase";
+import { WORKER_URL, workerFetch } from "@/lib/supabase";
 import { Badge } from "@/components/ui";
 
 interface Hit {
@@ -64,7 +64,7 @@ export default function ImpactAssessment() {
     setError(null);
     setResult(null);
     try {
-      const resp = await fetch(`${WORKER_URL}/ask/impact-assessment`, {
+      const resp = await workerFetch("/ask/impact-assessment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regulation_key: picked.key }),

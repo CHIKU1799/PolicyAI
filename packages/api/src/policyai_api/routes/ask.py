@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from policyai_extraction.agent import ask, ask_stream
 from policyai_extraction.llm import LLMClient
-from policyai_graph.models_app import DEFAULT_ORG_ID
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_llm, get_session
 
 router = APIRouter(prefix="/ask", tags=["ask"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/ask", tags=["ask"])
 
 class AskRequest(BaseModel):
     question: str
-    org_id: UUID = DEFAULT_ORG_ID
+    org_id: UUID | None = None  # honored only for platform admins
 
 
 class Citation(BaseModel):
@@ -39,11 +39,12 @@ async def ask_policyai(
     req: AskRequest,
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
+    principal: Principal = Depends(resolve_principal),
 ) -> AskResponse:
     from fastapi import HTTPException
 
     try:
-        result = await ask(session, req.question, llm, org_id=req.org_id)
+        result = await ask(session, req.question, llm, org_id=effective_org(principal, req.org_id))
     except Exception as exc:  # noqa: BLE001 - surface provider errors as a clean 502
         # An unhandled exception would bypass CORS middleware and reach the
         # browser as an opaque network failure; a proper HTTPException keeps
@@ -57,13 +58,16 @@ async def ask_policyai_stream(
     req: AskRequest,
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
+    principal: Principal = Depends(resolve_principal),
 ) -> StreamingResponse:
     """Server-Sent Events: stream answer tokens as they're generated, then citations.
     The session dependency stays open until the generator finishes."""
 
     async def event_gen():
         try:
-            async for event in ask_stream(session, req.question, llm, org_id=req.org_id):
+            async for event in ask_stream(
+                session, req.question, llm, org_id=effective_org(principal, req.org_id)
+            ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # noqa: BLE001 - surface as a stream event, don't 500
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)[:300]})}\n\n"
@@ -77,7 +81,7 @@ async def ask_policyai_stream(
 
 class ImpactRequest(BaseModel):
     regulation_key: str
-    org_id: UUID = DEFAULT_ORG_ID
+    org_id: UUID | None = None  # honored only for platform admins
 
 
 class ImpactActionOut(BaseModel):
@@ -102,6 +106,7 @@ async def impact_assessment(
     req: ImpactRequest,
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
+    principal: Principal = Depends(resolve_principal),
 ) -> ImpactResponse:
     """Draft an impact assessment of one regulation for the firm: an analyst
     first pass grounded in the regulation's extracted requirements and the
@@ -130,7 +135,11 @@ async def impact_assessment(
         .all()
     )
     profile = (
-        await session.execute(select(CompanyProfile).where(CompanyProfile.org_id == req.org_id))
+        await session.execute(
+            select(CompanyProfile).where(
+                CompanyProfile.org_id == effective_org(principal, req.org_id)
+            )
+        )
     ).scalar_one_or_none()
 
     p = node.properties or {}

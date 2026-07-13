@@ -26,6 +26,16 @@ interface OrgRow {
   gaps: number;
   tasks: number;
 }
+interface HealthCheck {
+  name: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+}
+interface SystemHealth {
+  generated_at: string;
+  status: string;
+  checks: HealthCheck[];
+}
 interface Overview {
   orgs: number;
   users: number;
@@ -43,6 +53,7 @@ const BAR_GAP = "#e0603a";
 
 export default function AdminPage() {
   const [data, setData] = useState<Overview | null>(null);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
   const [state, setState] = useState<"loading" | "forbidden" | "error" | "ok">("loading");
 
   useEffect(() => {
@@ -61,6 +72,13 @@ export default function AdminPage() {
         if (!resp.ok) return setState("error");
         setData((await resp.json()) as Overview);
         setState("ok");
+        // Fault checks load after the KPIs; failures here degrade gracefully.
+        fetch(`${WORKER_URL}/admin/health`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((h) => setHealth(h))
+          .catch(() => setHealth(null));
       } catch {
         setState("error");
       }
@@ -114,6 +132,47 @@ export default function AdminPage() {
         You are viewing cross-company data as a platform administrator. Individual companies
         never see this page or each other&apos;s data.
       </div>
+
+      {health && (
+        <div className="card mb-4 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-800">System health</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                health.status === "ok"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : health.status === "warn"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-700"
+              }`}
+            >
+              {health.status}
+            </span>
+            <span className="ml-auto text-[11px] text-[var(--muted)]">
+              checked {new Date(health.generated_at).toLocaleTimeString()}
+            </span>
+          </div>
+          <div className="grid gap-1.5 md:grid-cols-2">
+            {health.checks.map((c) => (
+              <div key={c.name} className="flex items-start gap-2 text-xs">
+                <span
+                  className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${
+                    c.status === "ok"
+                      ? "bg-emerald-500"
+                      : c.status === "warn"
+                        ? "bg-amber-500"
+                        : "bg-red-500"
+                  }`}
+                />
+                <span>
+                  <span className="font-medium text-slate-700">{c.name}:</span>{" "}
+                  <span className="text-[var(--muted)]">{c.detail}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label="Companies" value={data.orgs} hint="firms onboarded" />
