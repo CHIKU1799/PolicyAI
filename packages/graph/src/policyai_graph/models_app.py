@@ -162,6 +162,9 @@ class AlertKind(StrEnum):
     # A submitted policy actively contradicts a regulatory requirement — the highest
     # penalty risk, so it gets its own alert kind (not just a generic gap).
     POLICY_CONFLICT = "policy_conflict"
+    # Raised by the 0013 DB trigger when a control test fails or a control is
+    # marked ineffective (tests are written browser -> Supabase, no worker in path).
+    CONTROL_FAILED = "control_failed"
 
 
 class CoverageStatus(StrEnum):

@@ -373,9 +373,10 @@ async def map_obligation(
             description = f"{coverage}: {req.text}"
         # A conflict is a live violation — never file it below 'high'.
         severity = rg.severity or mapping.severity
-        if coverage == CoverageStatus.CONFLICTING.value and _SEVERITY_RANK.get(
-            severity, 1
-        ) < _SEVERITY_RANK[Severity.HIGH.value]:
+        if (
+            coverage == CoverageStatus.CONFLICTING.value
+            and _SEVERITY_RANK.get(severity, 1) < _SEVERITY_RANK[Severity.HIGH.value]
+        ):
             severity = Severity.HIGH.value
         # Keep the cited policy passage only if it truly appears in a policy doc,
         # and attribute it — a fabricated quote is worse than none for a penalty case.

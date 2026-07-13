@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, CheckCircle2 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
-import { PageHeader, Badge, DemoBanner, EmptyState } from "@/components/ui";
+import { PageHeader, Badge, DemoBanner, EmptyState, ExportButton } from "@/components/ui";
+import { downloadCSV } from "@/lib/export";
 import { POLICY_STATUS_STYLES, type Policy } from "@/lib/types";
 
 interface PolicyVersion {
@@ -47,6 +48,37 @@ export default function PoliciesPage() {
         subtitle="Central library with versioning, review/approval, and audit-ready traceability"
       />
       {!configured && <DemoBanner />}
+
+      {policies.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <ExportButton
+            label="Export audit trail"
+            onClick={() => {
+              const byId = new Map(policies.map((p) => [p.id, p]));
+              downloadCSV(
+                "policy-audit-trail.csv",
+                versions
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      (byId.get(a.policy_id)?.title ?? "").localeCompare(
+                        byId.get(b.policy_id)?.title ?? "",
+                      ) || a.version_no - b.version_no,
+                  )
+                  .map((v) => ({
+                    policy: byId.get(v.policy_id)?.title ?? v.policy_id,
+                    owner: byId.get(v.policy_id)?.owner ?? "",
+                    version: v.version_no,
+                    status: v.status,
+                    change_note: v.change_note ?? "",
+                    approved_by: v.approved_by ?? "",
+                    approved_at: v.approved_at ?? "",
+                  })),
+              );
+            }}
+          />
+        </div>
+      )}
 
       {policies.length === 0 ? (
         <EmptyState

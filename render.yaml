@@ -41,3 +41,17 @@ jobs:
     startCommand: uv run python -m policyai_scrapers.runner
     envVars:
       - fromGroup: policyai
+
+  - type: cron
+    name: policyai-digest
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    # Daily at 03:30 UTC (= 09:00 IST): ranked summary of the last 24h, emailed
+    # when RESEND_API_KEY/ALERT_EMAIL_TO are set in the env group.
+    schedule: "30 3 * * *"
+    buildCommand: pip install uv && uv sync --frozen
+    startCommand: uv run python -m policyai_extraction.digest
+    envVars:
+      - fromGroup: policyai

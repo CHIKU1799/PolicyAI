@@ -300,6 +300,37 @@ async def compute_insights(session: AsyncSession, org_id: UUID = DEFAULT_ORG_ID)
             action_href="/tasks",
         ),
     ]
+    # Coverage rollup: of the requirements imposed by this org's active
+    # obligations, how many have no open gap? (Gaps are only written for
+    # not-fully-covered requirements, so covered = applicable - open gaps.)
+    applicable_reqs = await _count(
+        session,
+        select(func.count())
+        .select_from(Requirement)
+        .where(
+            Requirement.regulation_node_id.in_(
+                select(Obligation.regulation_node_id).where(
+                    Obligation.org_id == org_id, Obligation.status.in_(ACTIVE_OB)
+                )
+            )
+        ),
+    )
+    uncovered_reqs = await _count(
+        session,
+        select(func.count(func.distinct(Gap.requirement_id))).where(
+            Gap.org_id == org_id,
+            Gap.requirement_id.isnot(None),
+            Gap.status != GapStatus.CLOSED.value,
+        ),
+    )
+    covered_reqs = max(0, applicable_reqs - uncovered_reqs)
+    coverage = {
+        "applicable": applicable_reqs,
+        "covered": covered_reqs,
+        "uncovered": uncovered_reqs,
+        "pct": round(100.0 * covered_reqs / applicable_reqs, 1) if applicable_reqs else None,
+    }
+
     insights = [i for i in catalog if i["count"] > 0]
     for i in insights:
         i["score"] = round(_WEIGHT[i["severity"]] * (1 + i["count"] ** 0.5), 3)
@@ -317,5 +348,6 @@ async def compute_insights(session: AsyncSession, org_id: UUID = DEFAULT_ORG_ID)
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "posture_note": posture,
+        "coverage": coverage,
         "insights": insights,
     }

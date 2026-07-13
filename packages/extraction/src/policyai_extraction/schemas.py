@@ -248,3 +248,32 @@ class MappedTask(BaseModel):
 
 # Resolve forward reference (MappedTask used before definition).
 ObligationMapping.model_rebuild()
+
+
+class ImpactAction(BaseModel):
+    action: str = Field(description="A concrete step the firm should take.")
+    priority: str = Field(default="short_term", description="immediate, short_term, or monitor.")
+
+
+class ImpactAssessment(BaseModel):
+    """A drafted impact assessment of one regulation for one firm — the Copilot
+    'analyst first pass' a compliance officer reviews and edits, not a verdict."""
+
+    applicability: str = Field(
+        description="Whether and why this regulation applies to the firm, grounded "
+        "in its entity classes and business topics."
+    )
+    overall_severity: str = Field(
+        default="medium", description="critical, high, medium, or low impact on this firm."
+    )
+    summary: str = Field(description="3-5 sentence executive summary of the impact.")
+    affected_areas: list[str] = Field(
+        default_factory=list,
+        description="Business areas / policy domains affected, "
+        "e.g. 'loan pricing', 'KYC onboarding'.",
+    )
+    key_requirements: list[str] = Field(
+        default_factory=list,
+        description="The 3-7 requirements that bite hardest for this firm, paraphrased.",
+    )
+    suggested_actions: list[ImpactAction] = Field(default_factory=list)

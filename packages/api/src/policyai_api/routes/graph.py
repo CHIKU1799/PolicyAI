@@ -172,9 +172,9 @@ async def subgraph(
             if frontier:
                 second = await _edges_touching(session, frontier)
                 seen = {e.id for e in edges}
-                edges = edges + [e for e in second if e.id not in seen][
-                    : max(0, limit - len(edges))
-                ]
+                edges = (
+                    edges + [e for e in second if e.id not in seen][: max(0, limit - len(edges))]
+                )
         node_ids = {e.source_id for e in edges} | {e.target_id for e in edges} | {root.id}
     else:
         # Overview: anchor on the highest-degree hubs (regulators, big entity

@@ -74,3 +74,19 @@ async def map_obligations(
             skipped += 1
         await session.commit()
     return MapResponse(mapped=mapped, skipped=skipped)
+
+
+class DigestRequest(BaseModel):
+    hours: int = 24
+
+
+@router.post("/digest", dependencies=[Depends(require_internal_secret)])
+async def daily_digest(
+    req: DigestRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Build (and email, when Resend is configured) the ranked daily digest.
+    Invoked by the Render cron; harmless to re-run."""
+    from policyai_extraction.digest import send_digest
+
+    return await send_digest(session, hours=req.hours)

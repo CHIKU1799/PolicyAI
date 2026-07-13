@@ -85,7 +85,7 @@ OPENAI_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 # on those is 30-60s, so *proactively* sizing requests under the cap is worth
 # far more than reactive retries. 0 disables the cap (HF/Together/paid Groq).
 OPENAI_TPM_LIMIT = int(
-    os.getenv("OPENAI_TPM_LIMIT", "12000" if "groq" in OPENAI_BASE_URL.lower() else "0")
+    os.getenv("OPENAI_TPM_LIMIT") or ("12000" if "groq" in OPENAI_BASE_URL.lower() else "0")
 )
 
 

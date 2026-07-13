@@ -30,9 +30,17 @@ class Insight(BaseModel):
     score: float
 
 
+class Coverage(BaseModel):
+    applicable: int
+    covered: int
+    uncovered: int
+    pct: float | None
+
+
 class InsightsResponse(BaseModel):
     generated_at: str
     posture_note: str
+    coverage: Coverage
     insights: list[Insight]
 
 

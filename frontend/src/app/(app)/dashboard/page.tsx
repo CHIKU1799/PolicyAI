@@ -61,13 +61,17 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [covered, setCovered] = useState<Set<string>>(new Set());
   const [serverInsights, setServerInsights] = useState<ServerInsight[] | null>(null);
+  const [reqCoverage, setReqCoverage] = useState<{ pct: number | null; covered: number; applicable: number } | null>(null);
 
   useEffect(() => {
     // Canonical, server-computed insights (richer than the client fallback below):
     // includes unmapped regulations, uncovered requirements, low-confidence mappings.
     fetch(`${WORKER_URL}/insights`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d) => setServerInsights(d.insights ?? []))
+      .then((d) => {
+        setServerInsights(d.insights ?? []);
+        setReqCoverage(d.coverage ?? null);
+      })
       .catch(() => setServerInsights(null));
   }, []);
 
@@ -106,7 +110,9 @@ export default function DashboardPage() {
     { label: "Active obligations", value: obligations.filter((o) => o.status === "open").length, sub: "open & unaddressed", accent: "#4B40C4", seed: 1 },
     { label: "Open gaps", value: openGaps, sub: "needing remediation", accent: "#D14343", seed: 3 },
     { label: "Control effectiveness", value: `${effectivePct}%`, sub: "tested effective", accent: "#1F9D5B", seed: 2 },
-    { label: "Coverage", value: `${coveragePct}%`, sub: "obligations with a control", accent: "#C77A1A", seed: 4 },
+    reqCoverage?.pct != null
+      ? { label: "Requirement coverage", value: `${reqCoverage.pct}%`, sub: `${reqCoverage.covered.toLocaleString()} of ${reqCoverage.applicable.toLocaleString()} covered by policy`, accent: "#C77A1A", seed: 4 }
+      : { label: "Coverage", value: `${coveragePct}%`, sub: "obligations with a control", accent: "#C77A1A", seed: 4 },
   ];
 
   const insights = [

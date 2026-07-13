@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Send, ExternalLink, Sparkles } from "lucide-react";
 import { WORKER_URL } from "@/lib/supabase";
+import ImpactAssessment from "@/components/ImpactAssessment";
 
 interface Citation {
   title: string;
@@ -109,6 +110,7 @@ export default function AskPage() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col">
       <div className="flex-1 space-y-4 overflow-y-auto pb-4">
+        {messages.length === 0 && <ImpactAssessment />}
         {messages.length === 0 && (
           <div className="card p-6">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">

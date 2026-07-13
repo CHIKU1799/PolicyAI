@@ -5,7 +5,7 @@ endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
         dev-api dev-web crawl eval eval-offline eval-baseline ingest backfill \
-        export-graph backup llm-groq llm-claude llm-status
+        export-graph backup llm-groq llm-cerebras llm-gemini llm-mistral llm-openrouter llm-claude llm-status
 
 help:
 	@echo "PolicyAI — available targets:"
@@ -95,6 +95,18 @@ map:
 
 llm-groq:
 	bash scripts/llm_switch.sh groq
+
+llm-cerebras:
+	bash scripts/llm_switch.sh cerebras
+
+llm-gemini:
+	bash scripts/llm_switch.sh gemini
+
+llm-mistral:
+	bash scripts/llm_switch.sh mistral
+
+llm-openrouter:
+	bash scripts/llm_switch.sh openrouter
 
 llm-claude:
 	bash scripts/llm_switch.sh claude
