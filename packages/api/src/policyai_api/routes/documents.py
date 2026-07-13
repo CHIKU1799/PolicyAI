@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from policyai_extraction.embeddings import embed_text
 from policyai_graph.models_app import CompanyDocument, DocumentStatus
 from pydantic import BaseModel
@@ -41,6 +41,7 @@ class ProcessResponse(BaseModel):
 @router.post("/process", response_model=ProcessResponse)
 async def process_document(
     req: ProcessRequest,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     principal: Principal = Depends(resolve_principal),
 ) -> ProcessResponse:
@@ -82,4 +83,13 @@ async def process_document(
         session.add(doc)
     await session.commit()
     await session.refresh(doc)
+
+    # Self-serve pipeline: once a firm's document is in, derive its profile
+    # (when missing) and run a bounded obligation-mapping pass in the
+    # background, so the dashboard fills in without a manual trigger.
+    if doc.status == DocumentStatus.PROCESSED.value:
+        from policyai_extraction.profile_derive import ensure_profile_and_map
+
+        background.add_task(ensure_profile_and_map, org_id)
+
     return ProcessResponse(id=doc.id, status=doc.status, chars=len(text))

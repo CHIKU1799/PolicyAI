@@ -8,10 +8,14 @@ they land, so the caller doesn't need to poll this endpoint.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Depends
 from policyai_extraction.map_all import map_unmapped
 from policyai_scrapers.runner import run_once
 from pydantic import BaseModel
+
+from policyai_api.auth import Principal, effective_org, resolve_principal
 
 router = APIRouter(tags=["scan"])
 
@@ -31,11 +35,22 @@ async def scan_now(background: BackgroundTasks) -> ScanResponse:
     )
 
 
+class MapRequest(BaseModel):
+    org_id: UUID | None = None  # honored only for platform admins
+    limit: int = 1000
+
+
 @router.post("/map", response_model=ScanResponse, status_code=202)
-async def map_now(background: BackgroundTasks) -> ScanResponse:
-    """Map every ingested regulation that still lacks an obligation. Useful after a
-    bulk ingest, or to re-run mapping if MAP_AFTER_SCAN was disabled during a crawl."""
-    background.add_task(map_unmapped)
+async def map_now(
+    background: BackgroundTasks,
+    req: MapRequest | None = None,
+    principal: Principal = Depends(resolve_principal),
+) -> ScanResponse:
+    """Map every ingested regulation that still lacks an obligation for the
+    caller's org. Useful after a bulk ingest or a new firm's first upload."""
+    req = req or MapRequest()
+    org_id = effective_org(principal, req.org_id)
+    background.add_task(map_unmapped, org_id, min(req.limit, 1000))
     return ScanResponse(
         status="started",
         detail="Obligation mapping started for unmapped regulations. "

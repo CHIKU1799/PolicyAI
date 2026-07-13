@@ -11,15 +11,9 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from policyai_extraction import gbrain_client
-from policyai_extraction.llm import MODEL_MAPPING, LLMClient
-from policyai_extraction.pipeline import load_prompt
-from policyai_extraction.schemas import CompanyProfileExtraction
-from policyai_graph.graph_ops import find_node
-from policyai_graph.models import NodeType
-from policyai_graph.models_app import CompanyDocument, CompanyProfile
+from policyai_extraction.llm import LLMClient
+from policyai_extraction.profile_derive import derive_profile_in_session
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
@@ -40,14 +34,6 @@ class DeriveResponse(BaseModel):
     rationale: str | None = None
 
 
-async def _valid_entity_classes(session: AsyncSession, keys: list[str]) -> list[str]:
-    out: list[str] = []
-    for k in keys:
-        if await find_node(session, node_type=NodeType.ENTITY_CLASS, canonical_key=k):
-            out.append(k)
-    return out
-
-
 @router.post("/derive", response_model=DeriveResponse)
 async def derive_profile(
     req: DeriveRequest,
@@ -56,52 +42,10 @@ async def derive_profile(
     principal: Principal = Depends(resolve_principal),
 ) -> DeriveResponse:
     org_id = effective_org(principal, req.org_id)
-    docs = (
-        (
-            await session.execute(
-                select(CompanyDocument).where(
-                    CompanyDocument.org_id == org_id,
-                    CompanyDocument.raw_text.isnot(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    corpus = "\n\n".join(f"[{d.filename}]\n{(d.raw_text or '')[:3000]}" for d in docs)
-
-    gbrain_hint = ""
-    if req.company_name and gbrain_client.is_configured():
-        company = await gbrain_client.find_company(req.company_name)
-        if company:
-            gbrain_hint = f"\n\nGBRAIN MATCH (BFSI graph):\n{company}"
-
-    extracted: CompanyProfileExtraction = await llm.extract(
-        f"COMPANY DOCUMENTS:\n{corpus or '(none uploaded)'}{gbrain_hint}",
-        CompanyProfileExtraction,
-        system=load_prompt("company_profile_v1.md"),
-        model=MODEL_MAPPING,
-    )
-
-    entity_classes = await _valid_entity_classes(session, extracted.entity_classes)
-
-    profile = (
-        await session.execute(select(CompanyProfile).where(CompanyProfile.org_id == org_id))
-    ).scalar_one_or_none()
-    if profile is None:
-        profile = CompanyProfile(org_id=org_id)
-        session.add(profile)
-    profile.entity_classes = entity_classes
-    profile.topics = extracted.topics
-    profile.regulators = extracted.regulators
-    # Stash the company name in notes for downstream gbrain owner lookups.
-    if req.company_name:
-        profile.notes = req.company_name
-    await session.commit()
-
+    profile = await derive_profile_in_session(session, llm, org_id, company_name=req.company_name)
     return DeriveResponse(
-        entity_classes=entity_classes,
-        topics=extracted.topics,
-        regulators=extracted.regulators,
-        rationale=extracted.rationale,
+        entity_classes=profile.entity_classes,
+        topics=profile.topics,
+        regulators=profile.regulators,
+        rationale=profile.__dict__.get("_rationale"),
     )
