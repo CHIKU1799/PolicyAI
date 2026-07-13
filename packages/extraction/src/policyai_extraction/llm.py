@@ -398,13 +398,23 @@ class LLMClient:
         ]
         oai_messages = [{"role": "system", "content": system}] + list(messages)
         for _ in range(max_iters):
-            resp = await self._oai.chat.completions.create(
-                model=self._model,
-                max_tokens=max_tokens,
-                messages=oai_messages,
-                tools=oai_tools,
-                tool_choice="auto",
-            )
+            # Open models occasionally emit a malformed tool call and the gateway
+            # 400s the whole turn (tool_use_failed). That's a sampling blip, not a
+            # terminal state: re-ask a couple of times before giving up.
+            for attempt in range(3):
+                try:
+                    resp = await self._oai.chat.completions.create(
+                        model=self._model,
+                        max_tokens=max_tokens,
+                        messages=oai_messages,
+                        tools=oai_tools,
+                        tool_choice="auto",
+                    )
+                    break
+                except Exception as exc:
+                    if attempt < 2 and "tool_use_failed" in str(exc):
+                        continue
+                    raise
             self._record_openai(resp)
             msg = resp.choices[0].message
             if not msg.tool_calls:

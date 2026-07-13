@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Send, ExternalLink, Sparkles } from "lucide-react";
 import { WORKER_URL } from "@/lib/supabase";
 import ImpactAssessment from "@/components/ImpactAssessment";
+import Markdown from "@/components/Markdown";
 
 interface Citation {
   title: string;
@@ -75,7 +76,13 @@ export default function AskPage() {
           } else if (evt.type === "citations") {
             updateLast((m) => ({ ...m, citations: evt.citations ?? [] }));
           } else if (evt.type === "error") {
-            updateLast((m) => ({ ...m, text: m.text || `Error: ${evt.message}` }));
+            // A structured provider error (rate limit, outage) is a real answer
+            // to show, not a reason to retry through the fallback endpoint.
+            streamed = true;
+            updateLast((m) => ({
+              ...m,
+              text: m.text || `The Copilot couldn't complete this request: ${evt.message}`,
+            }));
           }
         }
         scrollSoon();
@@ -132,38 +139,50 @@ export default function AskPage() {
 
         {messages.map((m, i) =>
           m.role === "assistant" && m.text === "" ? null : (
-            <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
+            <div key={i} className={m.role === "user" ? "flex justify-end" : "flex gap-2.5"}>
+              {m.role === "assistant" && (
+                <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#4b40c4] to-[#23204A] text-white">
+                  <Sparkles size={14} />
+                </div>
+              )}
               <div
                 className={
                   m.role === "user"
                     ? "max-w-[80%] rounded-2xl bg-[#4b40c4] px-4 py-2.5 text-sm text-white"
-                    : "card max-w-[90%] px-4 py-3 text-sm text-slate-800"
+                    : "card min-w-0 max-w-[90%] px-4 py-3"
                 }
               >
-                <div className="whitespace-pre-wrap leading-relaxed">{m.text}</div>
+                {m.role === "user" ? (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed">{m.text}</div>
+                ) : (
+                  <Markdown>{m.text}</Markdown>
+                )}
                 {m.citations && m.citations.length > 0 && (
                   <div className="mt-3 border-t border-[var(--border)] pt-2">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                    <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                       Sources
                     </div>
-                    <ul className="space-y-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {m.citations.map((c, j) => (
-                        <li key={j}>
-                          <a
-                            href={c.source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                          >
-                            <span className="rounded bg-slate-100 px-1 font-medium uppercase">
-                              {c.source}
-                            </span>
-                            {c.title}
-                            <ExternalLink size={11} />
-                          </a>
-                        </li>
+                        <a
+                          key={j}
+                          href={c.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={c.title}
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border)] bg-slate-50 px-2.5 py-1 text-xs text-slate-700 hover:border-[#4b40c4] hover:text-[#4b40c4]"
+                        >
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#4b40c4] text-[9px] font-bold text-white">
+                            {j + 1}
+                          </span>
+                          <span className="truncate">{c.title}</span>
+                          <span className="shrink-0 rounded bg-slate-200 px-1 text-[9px] font-semibold uppercase text-slate-600">
+                            {c.source}
+                          </span>
+                          <ExternalLink size={10} className="shrink-0" />
+                        </a>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </div>

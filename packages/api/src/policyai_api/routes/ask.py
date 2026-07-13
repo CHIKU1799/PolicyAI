@@ -40,7 +40,15 @@ async def ask_policyai(
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
 ) -> AskResponse:
-    result = await ask(session, req.question, llm, org_id=req.org_id)
+    from fastapi import HTTPException
+
+    try:
+        result = await ask(session, req.question, llm, org_id=req.org_id)
+    except Exception as exc:  # noqa: BLE001 - surface provider errors as a clean 502
+        # An unhandled exception would bypass CORS middleware and reach the
+        # browser as an opaque network failure; a proper HTTPException keeps
+        # the actual message (rate limit, provider outage) visible in the UI.
+        raise HTTPException(502, f"LLM provider error: {str(exc)[:300]}") from exc
     return AskResponse(answer=result["answer"], citations=result["citations"])
 
 
