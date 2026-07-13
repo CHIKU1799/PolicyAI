@@ -30,7 +30,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
   const isAuthPage = path.startsWith("/login");
-  const isPublic = path === "/"; // marketing landing page
+  // Marketing site is public; the product stays behind auth.
+  const isPublic =
+    path === "/" ||
+    ["/platform", "/solutions", "/security", "/resources", "/pricing", "/blog"].some(
+      (p) => path === p || path.startsWith(`${p}/`),
+    );
 
   if (!user && !isAuthPage && !isPublic) {
     const redirect = request.nextUrl.clone();
