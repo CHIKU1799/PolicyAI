@@ -91,6 +91,7 @@ async def ingest_records(
     *,
     org_id=DEFAULT_ORG_ID,
     dry_run: bool = False,
+    limit: int | None = None,
 ) -> IngestResult:
     """Ingest pre-fetched documents. Caller provides an open session; we commit
     per document so a mid-batch failure keeps everything already done."""
@@ -115,6 +116,8 @@ async def ingest_records(
         if source_id in by_source.get(source, set()):
             result.skipped_existing += 1
             continue
+        if limit and result.created >= limit:
+            break
         if dry_run:
             result.created += 1
             continue
@@ -166,15 +169,15 @@ def _load_jsonl(path: Path) -> list[dict]:
 
 
 async def _run(path: Path, *, limit: int | None, dry_run: bool, do_map: bool) -> IngestResult:
+    # limit counts NEW documents, applied inside the loop, so resumable batch
+    # runs make progress instead of re-scanning the same already-ingested prefix.
     records = _load_jsonl(path)
-    if limit:
-        records = records[:limit]
     engine = make_engine()
     sm = make_sessionmaker(engine)
     llm = LLMClient()
     try:
         async with sm() as session:
-            result = await ingest_records(session, records, llm, dry_run=dry_run)
+            result = await ingest_records(session, records, llm, dry_run=dry_run, limit=limit)
             if do_map and not dry_run and result.extracted:
                 # End-to-end: turn the just-ingested regulations into obligations.
                 from policyai_extraction.map_all import map_unmapped_in_session
@@ -193,7 +196,7 @@ async def _run(path: Path, *, limit: int | None, dry_run: bool, do_map: bool) ->
 def main() -> int:
     ap = argparse.ArgumentParser(description="Ingest pre-fetched documents into the graph.")
     ap.add_argument("jsonl", type=Path, help="JSONL file of document records")
-    ap.add_argument("--limit", type=int, default=None, help="ingest only the first N records")
+    ap.add_argument("--limit", type=int, default=None, help="stop after N newly ingested documents")
     ap.add_argument("--dry-run", action="store_true", help="report counts without writing")
     ap.add_argument(
         "--map",
