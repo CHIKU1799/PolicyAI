@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   // Marketing site is public; the product stays behind auth.
   const isPublic =
     path === "/" ||
-    ["/platform", "/solutions", "/security", "/resources", "/pricing", "/blog"].some(
+    ["/platform", "/solutions", "/security", "/resources", "/pricing", "/blog", "/contact"].some(
       (p) => path === p || path.startsWith(`${p}/`),
     );
 

@@ -129,7 +129,7 @@ export default function SecurityPage() {
               We answer vendor-risk questionnaires within one business week.
             </div>
             <a
-              href="/login"
+              href="/contact?intent=sales"
               className="mt-3 inline-block rounded-lg px-4 py-2 text-[12.5px] font-semibold text-white no-underline"
               style={{ background: "linear-gradient(135deg,#2E6BF7,#1746D6)" }}
             >

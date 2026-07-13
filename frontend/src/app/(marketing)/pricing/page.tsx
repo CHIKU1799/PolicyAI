@@ -22,6 +22,7 @@ const TIERS = [
       "PolicyAI Copilot with citations",
     ],
     cta: "Start free",
+    href: "/login",
   },
   {
     name: "Growth",
@@ -38,6 +39,7 @@ const TIERS = [
       "Priority support",
     ],
     cta: "Book a demo",
+    href: "/contact",
   },
   {
     name: "Enterprise",
@@ -53,6 +55,7 @@ const TIERS = [
       "Dedicated onboarding",
     ],
     cta: "Talk to sales",
+    href: "/contact?intent=sales",
   },
 ];
 
@@ -112,7 +115,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               <a
-                href="/login"
+                href={t.href}
                 className="mt-6 block rounded-xl py-2.5 text-center text-[13.5px] font-semibold no-underline"
                 style={
                   t.highlight

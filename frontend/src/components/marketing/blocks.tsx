@@ -113,7 +113,7 @@ export function Cta({ title, body }: { title: string; body: string }) {
             Explore the platform →
           </a>
           <a
-            href="/login"
+            href="/contact?intent=sales"
             className="rounded-xl border px-6 py-3 text-[14px] font-semibold no-underline"
             style={{ borderColor: "rgba(255,255,255,.25)", color: "#E4E2F4" }}
           >

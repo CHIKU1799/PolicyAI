@@ -696,3 +696,22 @@ class ObligationProduct(Base):
     __table_args__ = (
         UniqueConstraint("obligation_id", "product_id", name="uq_obligation_product"),
     )
+
+
+class DemoRequest(Base):
+    """A Book-a-demo / Talk-to-sales submission from the marketing site."""
+
+    __tablename__ = "demo_requests"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    intent: Mapped[str] = mapped_column(String(16), nullable=False, default="demo")
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    company: Mapped[str] = mapped_column(Text, nullable=False)
+    segment: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="new")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

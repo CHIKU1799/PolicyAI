@@ -19,6 +19,7 @@ from policyai_api.deps import get_session
 from policyai_api.routes import (
     admin,
     ask,
+    contact,
     documents,
     graph,
     insights,
@@ -47,6 +48,7 @@ app.include_router(ask.router)
 app.include_router(timeline.router)
 app.include_router(insights.router)
 app.include_router(admin.router)
+app.include_router(contact.router)
 
 
 @app.get("/health")

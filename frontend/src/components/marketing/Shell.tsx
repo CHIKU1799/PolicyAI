@@ -152,7 +152,7 @@ export function MarketingNav() {
               Sign in
             </Link>
             <Link
-              href="/login"
+              href="/contact"
               className="rounded-[10px] px-4 py-2 text-[13.5px] font-semibold text-white no-underline"
               style={{
                 background: "linear-gradient(135deg,#2E6BF7,#1746D6)",
