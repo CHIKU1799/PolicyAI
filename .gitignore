@@ -41,3 +41,7 @@ logs/
 # Local backups and ingestion inbox (large, regenerable)
 backups/
 inbox/
+
+# Private local artifacts, never committed
+*.pptx
+Saarthi_*.pdf
