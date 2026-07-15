@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   // ---- grounding: the caller's compliance state + relevant regulations ----
   const [obl, gaps, tasks] = await Promise.all([
-    supabase.from("obligations").select("title, severity, status, due_date").limit(400),
+    supabase.from("obligations").select("title, severity, status").limit(1000),
     supabase.from("gaps").select("description, severity, status, remediation_plan").limit(400),
     supabase.from("tasks").select("title, status, due_date").limit(400),
   ]);
