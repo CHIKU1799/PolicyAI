@@ -6,8 +6,10 @@ import { createClient } from "@supabase/supabase-js";
  * not deployed (e.g. the Vercel-only setup). Grounds the answer in the
  * caller's own Supabase data (their RLS applies: we query with their token)
  * plus a keyword search over the shared regulation graph, then answers via a
- * free-model chain: Groq -> Cerebras. No paid key is exposed here on purpose:
- * the endpoint is reachable by any signed-up user.
+ * provider chain that prefers free tiers and ends at a cheap paid fallback:
+ * Groq -> Cerebras -> Gemini -> Mistral -> OpenRouter -> Anthropic (Haiku).
+ * Each slot activates only when its key is configured; auth is required so
+ * only signed-up users can spend the budget.
  */
 
 export const runtime = "nodejs";
@@ -36,43 +38,91 @@ interface LlmResult {
   provider: string;
 }
 
+const PROVIDERS: {
+  name: string;
+  kind: "openai" | "anthropic";
+  url: string;
+  keyEnv: string;
+  model: string;
+}[] = [
+  {
+    name: "groq",
+    kind: "openai",
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    keyEnv: "GROQ_API_KEY",
+    model: "llama-3.3-70b-versatile",
+  },
+  {
+    name: "cerebras",
+    kind: "openai",
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    keyEnv: "CEREBRAS_API_KEY",
+    model: "gpt-oss-120b",
+  },
+  {
+    name: "gemini",
+    kind: "openai",
+    url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    keyEnv: "GEMINI_API_KEY",
+    model: "gemini-2.5-flash",
+  },
+  {
+    name: "mistral",
+    kind: "openai",
+    url: "https://api.mistral.ai/v1/chat/completions",
+    keyEnv: "MISTRAL_API_KEY",
+    model: "mistral-small-latest",
+  },
+  {
+    name: "openrouter",
+    kind: "openai",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    keyEnv: "OPENROUTER_API_KEY",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+  },
+  // Last resort: cheap paid tier. Haiku with a bounded completion keeps the
+  // worst-case cost per answer at well under a cent.
+  {
+    name: "anthropic",
+    kind: "anthropic",
+    url: "https://api.anthropic.com/v1/messages",
+    keyEnv: "ANTHROPIC_API_KEY",
+    model: "claude-haiku-4-5",
+  },
+];
+
 async function completeFree(system: string, user: string): Promise<LlmResult> {
-  const providers = [
-    {
-      name: "groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      model: "llama-3.3-70b-versatile",
-    },
-    {
-      name: "cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      key: process.env.CEREBRAS_API_KEY,
-      model: "gpt-oss-120b",
-    },
-  ];
   let lastErr = "no provider configured";
-  for (const p of providers) {
-    if (!p.key) continue;
+  for (const p of PROVIDERS) {
+    const key = process.env[p.keyEnv];
+    if (!key) continue;
     try {
-      const resp = await fetch(p.url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: p.model,
-          max_tokens: 1200,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-        }),
-      });
+      const headers: Record<string, string> =
+        p.kind === "anthropic"
+          ? { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }
+          : { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+      const body =
+        p.kind === "anthropic"
+          ? { model: p.model, max_tokens: 1200, system, messages: [{ role: "user", content: user }] }
+          : {
+              model: p.model,
+              max_tokens: 1200,
+              messages: [
+                { role: "system", content: system },
+                { role: "user", content: user },
+              ],
+            };
+      const resp = await fetch(p.url, { method: "POST", headers, body: JSON.stringify(body) });
       if (!resp.ok) {
         lastErr = `${p.name} ${resp.status}: ${(await resp.text()).slice(0, 160)}`;
         continue;
       }
       const data = await resp.json();
-      const text = data.choices?.[0]?.message?.content ?? "";
+      const text =
+        p.kind === "anthropic"
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (data.content ?? []).map((b: any) => b.text ?? "").join("")
+          : (data.choices?.[0]?.message?.content ?? "");
       if (text) return { text, provider: p.name };
       lastErr = `${p.name}: empty completion`;
     } catch (e) {
@@ -178,12 +228,13 @@ export async function POST(req: NextRequest) {
     "items. Bold key figures and dates. Never emit a wall of prose.";
 
   try {
-    const { text } = await completeFree(
+    const { text, provider } = await completeFree(
       system,
       `QUESTION: ${question}\n\nGROUNDING DATA (the firm's live compliance state):\n${JSON.stringify(grounding, null, 1)}`,
     );
     return NextResponse.json({
       answer: text,
+      engine: provider,
       citations: regs
         .filter((r) => r.source_url)
         .map((r) => ({ title: r.title, source_url: r.source_url, source: r.regulator ?? "reg" })),
