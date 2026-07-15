@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Send, ExternalLink, Sparkles } from "lucide-react";
-import { workerFetch } from "@/lib/supabase";
+import { getSupabase, workerFetch } from "@/lib/supabase";
 import ImpactAssessment from "@/components/ImpactAssessment";
 import Markdown from "@/components/Markdown";
 
@@ -99,11 +99,32 @@ export default function AskPage() {
         if (!resp.ok) throw new Error(`worker responded ${resp.status}`);
         const data = await resp.json();
         updateLast((m) => ({ ...m, text: data.answer, citations: data.citations ?? [] }));
-      } catch (err2) {
-        updateLast((m) => ({
-          ...m,
-          text: `Couldn't reach the worker (${(err2 as Error).message}).`,
-        }));
+      } catch {
+        // Final fallback: the serverless backup Copilot bundled with the
+        // frontend (free-model chain, grounded via Supabase under the
+        // caller's own permissions).
+        try {
+          const supabase = getSupabase();
+          const {
+            data: { session },
+          } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
+          const resp = await fetch("/api/ask", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+            },
+            body: JSON.stringify({ question: q }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data?.detail ?? `backup responded ${resp.status}`);
+          updateLast((m) => ({ ...m, text: data.answer, citations: data.citations ?? [] }));
+        } catch (err3) {
+          updateLast((m) => ({
+            ...m,
+            text: `The Copilot is unreachable right now (${(err3 as Error).message}).`,
+          }));
+        }
       }
     } finally {
       setBusy(false);
