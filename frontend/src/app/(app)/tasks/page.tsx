@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { TableSkeleton } from "@/components/Loading";
 import { PageHeader, Badge, DemoBanner } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import {
@@ -14,6 +15,7 @@ import {
 export default function TasksPage() {
   const [configured, setConfigured] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -25,7 +27,10 @@ export default function TasksPage() {
       .from("tasks")
       .select("*")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setTasks((data as Task[]) ?? []));
+      .then(({ data }) => {
+        setTasks((data as Task[]) ?? []);
+        setLoading(false);
+      });
   }, []);
 
   async function move(task: Task, status: TaskStatus) {
@@ -50,6 +55,9 @@ export default function TasksPage() {
       />
       {!configured && <DemoBanner />}
 
+      {loading ? (
+        <TableSkeleton rows={8} />
+      ) : (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {TASK_COLUMNS.map((col) => {
           const items = tasks.filter((t) => t.status === col.key);
@@ -104,6 +112,7 @@ export default function TasksPage() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

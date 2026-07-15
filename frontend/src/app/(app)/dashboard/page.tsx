@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
 import ScanButton from "@/components/ScanButton";
+import { KpiSkeleton } from "@/components/Loading";
 import type { Obligation, Gap, Control, Task, Alert, Severity } from "@/lib/types";
 
 const SEV_COLOR: Record<Severity, string> = {
@@ -60,6 +61,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [covered, setCovered] = useState<Set<string>>(new Set());
+  const [loadingData, setLoadingData] = useState(true);
   const [serverInsights, setServerInsights] = useState<ServerInsight[] | null>(null);
   const [reqCoverage, setReqCoverage] = useState<{ pct: number | null; covered: number; applicable: number } | null>(null);
 
@@ -93,6 +95,7 @@ export default function DashboardPage() {
       setTasks((t.data as Task[]) ?? []);
       setAlerts((a.data as Alert[]) ?? []);
       setCovered(new Set(((oc.data as { obligation_id: string }[]) ?? []).map((r) => r.obligation_id)));
+      setLoadingData(false);
     })();
   }, []);
 
@@ -209,6 +212,9 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI row */}
+      {loadingData ? (
+        <KpiSkeleton />
+      ) : (
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {kpis.map((k) => (
           <div key={k.label} className="card overflow-hidden px-4 pt-4">
@@ -223,6 +229,7 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* main grid */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">

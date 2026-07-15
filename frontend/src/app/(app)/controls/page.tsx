@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { getSupabase } from "@/lib/supabase";
 import { PageHeader, Kpi, Badge, DemoBanner, EmptyState } from "@/components/ui";
+import { KpiSkeleton, TableSkeleton } from "@/components/Loading";
 import { EFFECTIVENESS_STYLES, type Control, type ControlTest } from "@/lib/types";
 
 const RESULT_STYLES: Record<string, string> = {
@@ -24,6 +25,7 @@ export default function ControlsPage() {
   const [configured, setConfigured] = useState(true);
   const [controls, setControls] = useState<Control[]>([]);
   const [tests, setTests] = useState<ControlTest[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -35,7 +37,10 @@ export default function ControlsPage() {
       .from("controls")
       .select("*")
       .order("ref_code", { ascending: true })
-      .then(({ data }) => setControls((data as Control[]) ?? []));
+      .then(({ data }) => {
+        setControls((data as Control[]) ?? []);
+        setLoading(false);
+      });
     supabase
       .from("control_tests")
       .select("*")
@@ -83,6 +88,15 @@ export default function ControlsPage() {
       />
       {!configured && <DemoBanner />}
 
+      {loading ? (
+        <>
+          <KpiSkeleton />
+          <div className="mt-6">
+            <TableSkeleton />
+          </div>
+        </>
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Effective" value={count("effective")} tone="ok" />
         <Kpi label="Partial" value={count("partial")} tone="warn" />
@@ -201,6 +215,8 @@ export default function ControlsPage() {
             </tbody>
           </table>
         </div>
+      )}
+        </>
       )}
     </div>
   );

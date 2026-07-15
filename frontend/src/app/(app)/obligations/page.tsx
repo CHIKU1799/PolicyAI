@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
+import { TableSkeleton } from "@/components/Loading";
 import { PageHeader, Badge, DemoBanner, EmptyState, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { downloadCSV } from "@/lib/export";
@@ -45,6 +46,7 @@ interface LinkedTask {
 export default function ObligationsPage() {
   const [configured, setConfigured] = useState(true);
   const [rows, setRows] = useState<Obligation[]>([]);
+  const [loadingRows, setLoadingRows] = useState(true);
   const [controls, setControls] = useState<LinkedControl[]>([]);
   const [policies, setPolicies] = useState<LinkedPolicy[]>([]);
   const [tasks, setTasks] = useState<LinkedTask[]>([]);
@@ -61,7 +63,10 @@ export default function ObligationsPage() {
       .from("obligations")
       .select("*")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setRows((data as Obligation[]) ?? []));
+      .then(({ data }) => {
+        setRows((data as Obligation[]) ?? []);
+        setLoadingRows(false);
+      });
     supabase
       .from("obligation_controls")
       .select("obligation_id, controls(ref_code,title,effectiveness)")
@@ -135,7 +140,9 @@ export default function ObligationsPage() {
         />
       </div>
 
-      {filtered.length === 0 ? (
+      {loadingRows ? (
+        <TableSkeleton rows={8} />
+      ) : filtered.length === 0 ? (
         <EmptyState
           title="No obligations to show"
           body="As the monitoring agent maps new regulations to your profile, obligations land here with their controls, policies, gaps, and tasks."

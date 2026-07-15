@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { WORKER_URL } from "@/lib/supabase";
+import { sbSearch, sbStats, sbSubgraph } from "@/lib/graphFallback";
 import { PageHeader } from "@/components/ui";
+import { ProcessOverlay } from "@/components/Loading";
 
 // react-force-graph uses canvas/WebGL, so it must not render on the server.
 const ForceGraph2D = dynamic(() => import("@/components/force-graph"), { ssr: false });
@@ -80,6 +82,7 @@ export default function GraphPage() {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const wrap = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
@@ -90,20 +93,33 @@ export default function GraphPage() {
     if (center) url.searchParams.set("center", center);
     url.searchParams.set("hops", String(hops));
     setError(null);
+    setLoading(true);
     fetch(url.toString())
       .then((r) => r.json())
       .then((d) => {
         setData(d);
         setSelected(null);
       })
-      .catch((e) => setError(String(e)));
+      // Worker unreachable (e.g. deployed frontend without the worker tier):
+      // read the shared corpus straight from Supabase instead.
+      .catch(() =>
+        sbSubgraph(center, hops)
+          .then((d) => {
+            if (d) {
+              setData(d);
+              setSelected(null);
+            } else setError("no data source reachable");
+          })
+          .catch((e) => setError(String(e))),
+      )
+      .finally(() => setLoading(false));
   }, [center, hops]);
 
   useEffect(() => {
     fetch(`${WORKER_URL}/graph/stats`)
       .then((r) => r.json())
       .then(setStats)
-      .catch(() => null);
+      .catch(() => sbStats().then((st) => st && setStats(st)).catch(() => null));
   }, []);
 
   // Debounced center typeahead.
@@ -117,7 +133,7 @@ export default function GraphPage() {
       fetch(`${WORKER_URL}/graph/search?q=${encodeURIComponent(query.trim())}`)
         .then((r) => r.json())
         .then((h) => setHits(Array.isArray(h) ? h : []))
-        .catch(() => setHits([]))
+        .catch(() => sbSearch(query.trim()).then(setHits).catch(() => setHits([])))
         .finally(() => setSearching(false));
     }, 250);
     return () => clearTimeout(t);
@@ -277,7 +293,8 @@ export default function GraphPage() {
       </div>
 
       <div className="flex gap-3">
-        <div className="card min-w-0 flex-1 overflow-hidden" ref={wrap} style={{ height: 560 }}>
+        <div className="card relative min-w-0 flex-1 overflow-hidden" ref={wrap} style={{ height: 560 }}>
+          {loading && <ProcessOverlay label="Building the knowledge graph…" />}
           {error ? (
             <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
               Couldn&apos;t reach the worker graph endpoint ({WORKER_URL}). Start the API and seed

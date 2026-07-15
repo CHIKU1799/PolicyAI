@@ -6,10 +6,12 @@ import { PageHeader, Badge, DemoBanner, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { downloadCSV } from "@/lib/export";
 import { GAP_COLUMNS, SEVERITY_STYLES, type Gap, type GapStatus } from "@/lib/types";
+import { TableSkeleton } from "@/components/Loading";
 
 export default function GapsPage() {
   const [configured, setConfigured] = useState(true);
   const [gaps, setGaps] = useState<Gap[]>([]);
+  const [loading, setLoading] = useState(true);
   const [coverage, setCoverage] = useState<{ pct: number | null; covered: number; applicable: number; uncovered: number } | null>(null);
 
   useEffect(() => {
@@ -29,7 +31,10 @@ export default function GapsPage() {
       .from("gaps")
       .select("*")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setGaps((data as Gap[]) ?? []));
+      .then(({ data }) => {
+        setGaps((data as Gap[]) ?? []);
+        setLoading(false);
+      });
   }, []);
 
   async function move(gap: Gap, status: GapStatus) {
@@ -92,6 +97,9 @@ export default function GapsPage() {
         />
       </div>
 
+      {loading ? (
+        <TableSkeleton rows={8} />
+      ) : (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {GAP_COLUMNS.map((col) => {
           const items = gaps.filter((g) => g.status === col.key);
@@ -146,6 +154,7 @@ export default function GapsPage() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

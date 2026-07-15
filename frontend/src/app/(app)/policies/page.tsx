@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner, EmptyState, ExportButton } from "@/components/ui";
 import { downloadCSV } from "@/lib/export";
 import { POLICY_STATUS_STYLES, type Policy } from "@/lib/types";
+import { TableSkeleton } from "@/components/Loading";
 
 interface PolicyVersion {
   id: string;
@@ -21,6 +22,7 @@ export default function PoliciesPage() {
   const [configured, setConfigured] = useState(true);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [versions, setVersions] = useState<PolicyVersion[]>([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +35,10 @@ export default function PoliciesPage() {
       .from("policies")
       .select("*")
       .order("updated_at", { ascending: false })
-      .then(({ data }) => setPolicies((data as Policy[]) ?? []));
+      .then(({ data }) => {
+        setPolicies((data as Policy[]) ?? []);
+        setLoading(false);
+      });
     supabase
       .from("policy_versions")
       .select("*")
@@ -80,7 +85,9 @@ export default function PoliciesPage() {
         </div>
       )}
 
-      {policies.length === 0 ? (
+      {loading ? (
+        <TableSkeleton />
+      ) : policies.length === 0 ? (
         <EmptyState
           title="No policies yet"
           body="Add your governing policies here. Each gets versioned with a review and approval trail."
