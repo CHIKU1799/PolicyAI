@@ -108,7 +108,11 @@ async def ingest_records(
     for rec in records:
         source = rec.get("source", "")
         source_id = str(rec.get("source_id", "")).strip()
-        text = (rec.get("raw_text") or "").strip()
+        # PDF extractors sometimes emit lone UTF-16 surrogates that Postgres
+        # rejects; drop them at the boundary so one bad glyph can't kill a doc.
+        text = (rec.get("raw_text") or "").strip().encode("utf-8", "ignore").decode("utf-8")
+        if rec.get("title"):
+            rec["title"] = str(rec["title"]).encode("utf-8", "ignore").decode("utf-8")
         if not source or not source_id or not text:
             result.failed += 1
             result.errors.append(f"missing source/source_id/raw_text: {source}:{source_id}")

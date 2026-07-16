@@ -33,9 +33,11 @@ def test_routing_model_selection_and_toggle(monkeypatch):
     # cheap model for trivial docs, strong model for dense ones
     assert routing.model_for("extraction", "low") == "claude-haiku-4-5"
     assert routing.model_for("mapping", "low") == "claude-sonnet-4-6"
-    assert routing.model_for("mapping", "high") == "claude-opus-4-8"
+    # high-complexity mapping uses the configured stage default (opus by
+    # default; deployments may pin sonnet for economy via ANTHROPIC_MODEL_MAPPING)
+    assert routing.model_for("mapping", "high") == MODEL_MAPPING
     m, tag = routing.route_model("mapping", "x" * 20000, "master_direction")
-    assert m == "claude-opus-4-8" and tag == "high"
+    assert m == MODEL_MAPPING and tag == "high"
 
     # env override wins
     monkeypatch.setenv("MODEL_MAPPING_LOW", "claude-haiku-4-5")
