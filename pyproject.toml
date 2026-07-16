@@ -8,6 +8,7 @@ dependencies = [
     "policyai-extraction",
     "policyai-graph",
     "policyai-api",
+    "sentence-transformers>=5.6.0",
 ]
 
 [tool.uv]
