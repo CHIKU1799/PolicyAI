@@ -158,11 +158,19 @@ async def subgraph(
     session: AsyncSession = Depends(get_session),
 ) -> Subgraph:
     if center:
-        root = (
-            await session.execute(
-                select(Node).where(Node.properties["canonical_key"].astext == center).limit(1)
+        # A key can exist as both an entity_class and a topic (e.g. "nbfc");
+        # prefer the structural anchor types so centering behaves predictably.
+        candidates = (
+            (
+                await session.execute(
+                    select(Node).where(Node.properties["canonical_key"].astext == center)
+                )
             )
-        ).scalar_one_or_none()
+            .scalars()
+            .all()
+        )
+        _pref = {"entity_class": 0, "regulator": 1, "regulation": 2, "parent_act": 3, "topic": 4}
+        root = min(candidates, key=lambda n: _pref.get(n.node_type, 9), default=None)
         if root is None:
             return Subgraph(nodes=[], links=[])
         edges = await _edges_touching(session, {root.id})
