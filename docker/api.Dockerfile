@@ -26,4 +26,5 @@ EXPOSE 8000
 # Local-embeddings model cache persists in /data (mount a volume).
 VOLUME ["/data"]
 
-CMD ["uv", "run", "uvicorn", "policyai_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# PaaS hosts (Sevalla/Render/etc.) inject PORT; local compose defaults to 8000.
+CMD ["sh", "-c", "uv run --no-sync uvicorn policyai_api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
