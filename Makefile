@@ -5,7 +5,8 @@ endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
         dev-api dev-web crawl eval eval-offline eval-baseline ingest backfill \
-        export-graph backup llm-groq llm-cerebras llm-gemini llm-mistral llm-openrouter llm-claude llm-status
+        export-graph backup llm-groq llm-cerebras llm-gemini llm-mistral llm-openrouter llm-claude llm-status \
+        docker-up docker-down docker-logs docker-crawl
 
 help:
 	@echo "PolicyAI — available targets:"
@@ -27,6 +28,12 @@ help:
 	@echo "  dev-api    Run the FastAPI worker locally (port 8000)"
 	@echo "  dev-web    Run the Next.js frontend locally (port 3000)"
 	@echo ""
+	@echo "  Docker (full stack from .env, no local Python/Node needed):"
+	@echo "  docker-up     Build + start api (:8000) and web (:3000)"
+	@echo "  docker-down   Stop the stack"
+	@echo "  docker-logs   Follow api + web logs"
+	@echo "  docker-crawl  One-shot crawler pass inside the api image"
+	@echo ""
 	@echo "  Cloud DB targets (optional local Postgres):"
 	@echo "  db-up/db-down/db-reset   docker compose Postgres for offline dev"
 	@echo ""
@@ -46,6 +53,18 @@ lint:
 format:
 	uv run ruff check --fix .
 	uv run black .
+
+docker-up:
+	docker compose up -d --build api web
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f api web
+
+docker-crawl:
+	docker compose run --rm crawler
 
 db-up:
 	docker compose up -d postgres

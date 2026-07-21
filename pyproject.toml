@@ -9,6 +9,9 @@ dependencies = [
     "policyai-graph",
     "policyai-api",
     "sentence-transformers>=5.6.0",
+    # Declared explicitly (it comes with sentence-transformers anyway) so the
+    # pytorch-cpu index pin below applies; uv ignores sources for transitives.
+    "torch>=2.0",
 ]
 
 [tool.uv]
@@ -22,6 +25,15 @@ policyai-scrapers = { workspace = true }
 policyai-extraction = { workspace = true }
 policyai-graph = { workspace = true }
 policyai-api = { workspace = true }
+# CPU-only torch: without this, torch on Linux drags in ~5GB of NVIDIA CUDA
+# wheels the Docker image can't use. The cpu index also serves macOS wheels,
+# so local dev resolves from the same place.
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [

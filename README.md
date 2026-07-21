@@ -67,6 +67,35 @@ make dev-web                      # Next.js dashboard on :3000  (or: cd frontend
 The Render cron runs `python -m policyai_scrapers.runner` on a schedule; the web
 service runs `uvicorn policyai_api.main:app`. Both are defined in `render.yaml`.
 
+## Quickstart with Docker (easiest way to share)
+
+The only host requirements are Docker and a filled-in `.env`. No Python, uv,
+or Node needed.
+
+```bash
+cp .env.example .env              # fill in Supabase DSN/keys + one LLM key
+make docker-up                    # builds api + web images, starts both
+#   API: http://localhost:8000    Web: http://localhost:3000
+```
+
+Every env variable flows from the root `.env`: the API container reads it at
+runtime (`env_file`), and the `NEXT_PUBLIC_*` values are inlined into the
+frontend bundle at build time. If you change a `NEXT_PUBLIC_*` value, rebuild
+with `make docker-up` (a restart is not enough).
+
+Other Docker targets:
+
+```bash
+make docker-crawl                 # one-shot crawler pass inside the api image
+make docker-logs                  # follow api + web logs
+make docker-down                  # stop everything
+```
+
+To hand the project to someone else: share the repo + a copy of your `.env`
+(send it over a private channel; `.env` is git- and docker-ignored so it never
+leaks into the image or the repo). They run the two commands above and get the
+same stack pointed at the same Supabase project.
+
 ## Makefile targets
 
 | Target       | What it does |

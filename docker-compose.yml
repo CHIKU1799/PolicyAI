@@ -1,4 +1,50 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: policyai-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - hf_cache:/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/ready')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SUPABASE_KB_BUCKET: ${SUPABASE_KB_BUCKET:-company-documents}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: policyai-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # One-shot crawl using the same image as the API. Run on demand or from the
+  # host's cron:  docker compose run --rm crawler
+  crawler:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    profiles: ["crawl"]
+    env_file: .env
+    volumes:
+      - hf_cache:/data
+    command: ["uv", "run", "python", "-m", "policyai_scrapers.runner"]
+
   postgres:
     image: pgvector/pgvector:pg15
     container_name: policyai-postgres
@@ -21,3 +67,5 @@ services:
 volumes:
   postgres_data:
     name: policyai_postgres_data
+  hf_cache:
+    name: policyai_hf_cache
