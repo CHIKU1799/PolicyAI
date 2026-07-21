@@ -66,8 +66,15 @@ The shared Supabase project is already migrated (Alembic head `0013`). After
 pulling a newer version of the repo that adds migrations:
 
 ```bash
-docker compose run --rm api sh -c "cd packages/graph && uv run alembic upgrade head"
+docker compose run --rm api sh -c "cd packages/graph && uv run --no-sync alembic upgrade head"
 ```
+
+Notes on this command:
+- `alembic` alone will print "not found" — it lives in the uv-managed venv, so
+  it must go through `uv run`.
+- The `cd packages/graph` is required: `alembic.ini` lives there, and alembic
+  only looks in the current directory.
+- `--no-sync` stops uv from re-resolving dependencies at container start.
 
 ## Fully offline / self-hosted DB (optional)
 
@@ -78,7 +85,7 @@ pgvector in the compose file:
 docker compose up -d postgres
 # then set DATABASE_URL=postgresql://policyai:policyai@postgres:5432/policyai
 # in .env, run migrations + seed:
-docker compose run --rm api sh -c "cd packages/graph && uv run alembic upgrade head"
+docker compose run --rm api sh -c "cd packages/graph && uv run --no-sync alembic upgrade head"
 ```
 
 Note: Supabase Auth, Storage, and RLS-backed frontend reads do not work
