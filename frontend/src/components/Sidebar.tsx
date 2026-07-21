@@ -22,16 +22,16 @@ import {
 import { getSupabase } from "@/lib/supabase";
 
 const MONITOR = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/obligations", label: "Obligations", icon: ShieldAlert },
-  { href: "/graph", label: "Knowledge Graph", icon: Share2 },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance" },
+  { href: "/obligations", label: "Obligations", icon: ShieldAlert, hint: "What the regulations require you to do" },
+  { href: "/graph", label: "Knowledge Graph", icon: Share2, hint: "Explore how regulations, topics and deadlines connect" },
 ];
 const MANAGE = [
-  { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert },
-  { href: "/controls", label: "Controls", icon: ShieldCheck },
-  { href: "/policies", label: "Policies", icon: FileText },
-  { href: "/tasks", label: "Tasks", icon: ListChecks },
-  { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
+  { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert, hint: "Obligations you are not fully covering yet" },
+  { href: "/controls", label: "Controls Testing", icon: ShieldCheck, hint: "The checks that prove each obligation is met, and their test results" },
+  { href: "/policies", label: "Policies", icon: FileText, hint: "Your internal policy documents and versions" },
+  { href: "/tasks", label: "Tasks", icon: ListChecks, hint: "Action items generated from obligations" },
+  { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen, hint: "Your company documents and registrations" },
 ];
 
 function Brand() {
@@ -84,8 +84,8 @@ export default function Sidebar() {
     router.refresh();
   }
 
-  const NavItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: typeof LayoutDashboard }) => (
-    <Link href={href} className={clsx("nav-link", pathname.startsWith(href) && "nav-link-active")}>
+  const NavItem = ({ href, label, icon: Icon, hint }: { href: string; label: string; icon: typeof LayoutDashboard; hint?: string }) => (
+    <Link href={href} title={hint} className={clsx("nav-link", pathname.startsWith(href) && "nav-link-active")}>
       <span className="flex w-[18px] justify-center">
         <Icon size={16} />
       </span>
@@ -152,7 +152,12 @@ export default function Sidebar() {
       {/* compliance score */}
       <div className="mx-3 mb-2 flex-none rounded-xl border border-[var(--border)] bg-white px-3 py-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-[11.5px] font-semibold text-[var(--muted)]">Compliance score</span>
+          <span
+            className="text-[11.5px] font-semibold text-[var(--muted)]"
+            title="Share of your controls whose latest test shows they are effective"
+          >
+            Compliance score
+          </span>
           <span className="text-[13px] font-extrabold text-[var(--success)]">
             {score ?? "--"}
             <span className="text-[10px] font-semibold text-[var(--muted-2)]">/100</span>

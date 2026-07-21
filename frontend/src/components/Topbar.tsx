@@ -11,7 +11,7 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": { title: "Compliance Dashboard", subtitle: "Live posture across regulations, obligations & controls" },
   "/obligations": { title: "Obligations", subtitle: "Structured obligations mapped to controls, policies & tasks" },
   "/gaps": { title: "Gap Analysis", subtitle: "Where your controls and policies fall short of obligations" },
-  "/controls": { title: "Controls Testing", subtitle: "Real-time control effectiveness monitoring" },
+  "/controls": { title: "Controls Testing", subtitle: "Controls are the checks that prove you meet each obligation. Test them regularly to show they work." },
   "/policies": { title: "Policy Library", subtitle: "Versioning, review & approval with audit traceability" },
   "/tasks": { title: "Tasks", subtitle: "Actionable work generated from obligations" },
   "/knowledge-base": { title: "Knowledge Base", subtitle: "Your company's policies and registrations" },

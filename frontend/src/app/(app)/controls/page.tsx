@@ -88,6 +88,21 @@ export default function ControlsPage() {
       />
       {!configured && <DemoBanner />}
 
+      <div className="card mb-4 border-[#E4E0F7] bg-gradient-to-b from-[#F8F7FE] to-white p-4">
+        <div className="text-sm font-semibold text-[var(--brand-ink)]">What is a control?</div>
+        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-slate-600">
+          A control is a check or process your team runs to make sure a regulatory obligation is
+          actually being met, for example a maker-checker review before payouts, or a quarterly KYC
+          file audit. Each control is tested on a schedule; the test result (pass, partial or fail)
+          drives its effectiveness rating below and your overall compliance score.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[12px] text-slate-500">
+          <span><b className="text-slate-700">1. Define</b> a control for an obligation</span>
+          <span><b className="text-slate-700">2. Test</b> it at its set frequency</span>
+          <span><b className="text-slate-700">3. Record</b> the result to update effectiveness</span>
+        </div>
+      </div>
+
       {loading ? (
         <>
           <KpiSkeleton />
@@ -98,10 +113,10 @@ export default function ControlsPage() {
       ) : (
         <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi label="Effective" value={count("effective")} tone="ok" />
-        <Kpi label="Partial" value={count("partial")} tone="warn" />
-        <Kpi label="Ineffective" value={count("ineffective")} tone="danger" />
-        <Kpi label="Untested" value={count("untested")} hint="Need a first test" />
+        <Kpi label="Effective" value={count("effective")} tone="ok" hint="Latest test passed; working as intended" />
+        <Kpi label="Partial" value={count("partial")} tone="warn" hint="Works, but with gaps to close" />
+        <Kpi label="Ineffective" value={count("ineffective")} tone="danger" hint="Latest test failed; needs remediation" />
+        <Kpi label="Untested" value={count("untested")} hint="No test recorded yet; run a first test" />
       </div>
 
       {testedWeeks >= 2 && (
@@ -153,7 +168,7 @@ export default function ControlsPage() {
         <div className="mt-6">
           <EmptyState
             title="No controls yet"
-            body="Define the controls that satisfy your obligations, then record tests to track effectiveness here."
+            body="Start from the Obligations page: pick an obligation, define the control (the check or process) that satisfies it, then record test results here to track whether it works."
           />
         </div>
       ) : (
@@ -162,10 +177,10 @@ export default function ControlsPage() {
             <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
               <tr>
                 <th className="px-4 py-3">Control</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Owner</th>
-                <th className="px-4 py-3">Frequency</th>
-                <th className="px-4 py-3">Effectiveness</th>
+                <th className="px-4 py-3" title="Preventive stops issues before they happen; detective finds them after">Type</th>
+                <th className="px-4 py-3" title="Person responsible for running and testing this control">Owner</th>
+                <th className="px-4 py-3" title="How often this control should be tested">Test frequency</th>
+                <th className="px-4 py-3" title="Rating from the most recent test result">Effectiveness</th>
                 <th className="px-4 py-3">Latest test</th>
               </tr>
             </thead>
@@ -186,8 +201,8 @@ export default function ControlsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 capitalize text-[var(--muted)]">{c.control_type}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{c.owner ?? "—"}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{c.frequency ?? "—"}</td>
+                    <td className="px-4 py-3 text-[var(--muted)]">{c.owner ?? "Unassigned"}</td>
+                    <td className="px-4 py-3 text-[var(--muted)]">{c.frequency ?? "Not set"}</td>
                     <td className="px-4 py-3">
                       <Badge className={EFFECTIVENESS_STYLES[c.effectiveness]}>
                         {c.effectiveness}
@@ -206,7 +221,7 @@ export default function ControlsPage() {
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-[var(--muted)]">no tests</span>
+                        <span className="text-xs text-[var(--muted)]">Not tested yet</span>
                       )}
                     </td>
                   </tr>
