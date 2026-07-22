@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Search, Sparkles } from "lucide-react";
+import { Menu, Search, Sparkles } from "lucide-react";
 import AlertFeed from "@/components/AlertFeed";
 import CommandPalette from "@/components/CommandPalette";
 
@@ -19,7 +19,7 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/ask": { title: "Ask PolicyAI", subtitle: "Grounded answers across your regulatory data" },
 };
 
-export default function Topbar() {
+export default function Topbar({ onMenu }: { onMenu?: () => void }) {
   const pathname = usePathname();
   const key = Object.keys(TITLES).find((k) => pathname.startsWith(k)) ?? "/dashboard";
   const { title, subtitle } = TITLES[key];
@@ -44,14 +44,21 @@ export default function Topbar() {
   }, [router]);
 
   return (
-    <header className="relative z-40 flex h-[60px] flex-none items-center gap-4 border-b border-[var(--border)] bg-[rgba(252,252,251,.82)] px-6 backdrop-blur-md">
+    <header className="relative z-40 flex h-[60px] flex-none items-center gap-3 border-b border-[var(--border)] bg-[rgba(252,252,251,.82)] px-4 backdrop-blur-md sm:gap-4 sm:px-6">
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <div className="flex-none">
-        <div className="serif text-[19px] font-medium leading-tight tracking-[-.01em]">{title}</div>
-        <div className="mt-0.5 text-[12px] text-[#8b8e95]">{subtitle}</div>
+      <button
+        onClick={onMenu}
+        aria-label="Open navigation"
+        className="-ml-1 flex h-9 w-9 flex-none items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[#f2f2ef] lg:hidden"
+      >
+        <Menu size={20} />
+      </button>
+      <div className="min-w-0 flex-none">
+        <div className="serif truncate text-[17px] font-medium leading-tight tracking-[-.01em] sm:text-[19px]">{title}</div>
+        <div className="mt-0.5 hidden truncate text-[12px] text-[#8b8e95] md:block">{subtitle}</div>
       </div>
 
-      <div className="flex flex-1 justify-center">
+      <div className="hidden flex-1 justify-center md:flex">
         <button
           onClick={() => setPaletteOpen(true)}
           className="flex h-[38px] w-[360px] max-w-full items-center gap-2.5 rounded-[10px] border border-[var(--border)] bg-[#f2f2ef] px-3.5 text-[var(--muted-2)] transition-colors hover:border-[var(--brand)]/40 hover:bg-white"
@@ -64,14 +71,21 @@ export default function Topbar() {
         </button>
       </div>
 
-      <div className="flex flex-none items-center gap-2.5">
+      <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2.5 md:ml-0">
+        <button
+          onClick={() => setPaletteOpen(true)}
+          aria-label="Search"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[#f2f2ef] md:hidden"
+        >
+          <Search size={18} />
+        </button>
         <AlertFeed />
         <Link
           href="/ask"
-          className="brand-grad flex h-[38px] items-center gap-2 rounded-[10px] px-[15px] text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(67,56,184,.32)]"
+          className="brand-grad flex h-[38px] items-center gap-2 rounded-[10px] px-3 text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(67,56,184,.32)] sm:px-[15px]"
         >
           <Sparkles size={16} />
-          Ask PolicyAI
+          <span className="hidden sm:inline">Ask PolicyAI</span>
         </Link>
       </div>
     </header>

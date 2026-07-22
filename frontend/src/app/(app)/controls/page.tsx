@@ -172,8 +172,8 @@ export default function ControlsPage() {
           />
         </div>
       ) : (
-        <div className="card mt-6 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card mt-6 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
               <tr>
                 <th className="px-4 py-3">Control</th>

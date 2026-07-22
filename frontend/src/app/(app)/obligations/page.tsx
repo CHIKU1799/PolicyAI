@@ -105,8 +105,8 @@ export default function ObligationsPage() {
       />
       {!configured && <DemoBanner />}
 
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
           {["all", "critical", "high", "medium", "low"].map((s) => (
             <button
               key={s}
@@ -148,8 +148,8 @@ export default function ObligationsPage() {
           body="As the monitoring agent maps new regulations to your profile, obligations land here with their controls, policies, gaps, and tasks."
         />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
               <tr>
                 <th className="w-8 px-4 py-3"></th>
@@ -186,7 +186,11 @@ export default function ObligationsPage() {
                             </Badge>
                           )}
                           {o.mapping_confidence != null && o.mapping_confidence < 0.5 && (
-                            <Badge className="bg-amber-100 text-amber-700">review</Badge>
+                            <Badge className="bg-amber-100 text-amber-700">
+                              <span title="Our confidence in this mapping is low. We are re-verifying it against the source regulation and will update this shortly.">
+                                being verified
+                              </span>
+                            </Badge>
                           )}
                         </div>
                       </td>

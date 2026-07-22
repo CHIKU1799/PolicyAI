@@ -96,7 +96,7 @@ export default function Sidebar() {
   const initials = (email ?? "U").split("@")[0].slice(0, 2).toUpperCase();
 
   return (
-    <aside className="flex w-[258px] flex-none flex-col border-r border-[var(--border)] bg-[var(--surface)]">
+    <aside className="flex h-full w-[258px] flex-none flex-col border-r border-[var(--border)] bg-[var(--surface)] shadow-xl lg:shadow-none">
       <Brand />
 
       {/* workspace switcher */}

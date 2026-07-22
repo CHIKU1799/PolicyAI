@@ -93,8 +93,8 @@ export default function PoliciesPage() {
           body="Add your governing policies here. Each gets versioned with a review and approval trail."
         />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
               <tr>
                 <th className="w-8 px-4 py-3"></th>

@@ -94,6 +94,9 @@ seed-admin:
 crawl:
 	uv run python -m policyai_scrapers.runner
 
+reverify:
+	uv run python scripts/reverify_low_confidence.py $(ARGS)
+
 ingest:
 	uv run python -m policyai_extraction.ingest $(FILE) $(ARGS)
 
