@@ -1,4 +1,123 @@
-# PolicyAI server deployment (Docker)
+# PolicyAI deployment
+
+Two supported paths:
+
+1. **Sevalla** (PaaS, builds from GitHub) — see the next section.
+2. **Any server with Docker Compose** — see "Server deployment (Docker)".
+
+Both use the same two images (`docker/api.Dockerfile`, `docker/web.Dockerfile`)
+and the same cloud Supabase database, so they are interchangeable.
+
+## Sevalla deployment
+
+Sevalla builds straight from the GitHub repo using the existing Dockerfiles.
+Create **two applications** from `github.com/CHIKU1799/PolicyAI`, branch `main`.
+
+### App 1: policyai-api (worker + crawler + digest)
+
+Build settings (Settings -> Build):
+
+- Build strategy: **Dockerfile**
+- Dockerfile path: `docker/api.Dockerfile`
+- Context: `.`
+
+Environment variables: everything from `.env` EXCEPT the `NEXT_PUBLIC_*` ones
+(those belong to the web app). At minimum: `DATABASE_URL`, `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_KB_BUCKET`,
+`LLM_PROVIDER` + the active provider key, `EMBEDDING_PROVIDER`,
+`RERANK_PROVIDER` + `COHERE_API_KEY`, and:
+
+```
+FRONTEND_ORIGINS=https://<your-web-app>.sevalla.app
+```
+
+(comma-append any custom domain later, or the browser gets CORS errors).
+
+None of the API env vars are needed at build time, so no build-time toggles.
+The image's CMD already binds `0.0.0.0:$PORT`, which Sevalla injects.
+
+Processes (Sevalla runs every process from the same built image):
+
+| Process | Type | Start command | Schedule |
+|---|---|---|---|
+| web | Web process | (image default CMD) | — |
+| crawler | Cron job | `uv run --no-sync python -m policyai_scrapers.runner` | `0 */6 * * *` |
+| digest | Cron job | `uv run --no-sync python -m policyai_extraction.digest` | `30 3 * * *` |
+
+Sizing and storage:
+
+- With `EMBEDDING_PROVIDER=local`, the API downloads the bge-m3 model
+  (~2.3 GB) into `HF_HOME=/data` on first use and needs it in RAM. Give the
+  web process **at least 2 GB RAM** and attach **persistent storage mounted at
+  `/data`** (Sevalla disks are configured in the dashboard, not the
+  Dockerfile) so the model survives deploys. If you'd rather run a small pod,
+  set `EMBEDDING_PROVIDER=hf` (or `cohere`) instead and skip the disk.
+- Verify after deploy: `https://<api-app>.sevalla.app/ready` should return
+  `{"status":"ok","db":"ok"}`.
+
+### App 2: policyai-web (Next.js frontend)
+
+Build settings:
+
+- Build strategy: **Dockerfile**
+- Dockerfile path: `docker/web.Dockerfile`
+- Context: `.`
+
+`NEXT_PUBLIC_*` values are inlined at **build time**. Sevalla passes an env
+var into a Dockerfile build only when the Dockerfile declares a matching
+`ARG` — `docker/web.Dockerfile` already declares all four — so just add them
+as normal environment variables on this app, then trigger a build:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+NEXT_PUBLIC_SUPABASE_KB_BUCKET=company-documents
+NEXT_PUBLIC_API_URL=https://<api-app>.sevalla.app
+```
+
+Changing any of these later requires a **rebuild**, not just a restart.
+
+Optionally also add the LLM provider keys (`GROQ_API_KEY`, `CEREBRAS_API_KEY`,
+`GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`
+- any subset) as **runtime** env vars on the web app: the bundled backup
+Copilot (`/api/ask`, used when the worker is unreachable) runs server-side in
+Next.js and reads them at request time.
+
+Processes: the single default web process. The image binds `$PORT`
+automatically.
+
+### Order of operations
+
+1. Deploy **policyai-api** first, note its public URL.
+2. Set that URL as `NEXT_PUBLIC_API_URL` on **policyai-web**, deploy it,
+   note the web URL.
+3. Go back to policyai-api and set `FRONTEND_ORIGINS` to the web URL,
+   redeploy (restart is enough; it is read at runtime).
+4. Configure Supabase Auth (Dashboard -> Authentication -> URL
+   Configuration) or signup confirmation emails will dead-end:
+   - **Site URL** = `https://<web-app>.sevalla.app` (or the custom domain).
+   - **Redirect URLs**: add `https://<web-app>.sevalla.app/auth/callback`
+     and, for local dev, `http://localhost:3001/auth/callback`.
+   - The frontend sends `emailRedirectTo = <origin>/auth/callback`; that
+     route handles both `?code=` and `?token_hash=` link styles and lands
+     the user in the app (or on /login with a clear notice).
+   - Supabase's built-in SMTP allows only a couple of mails per hour and
+     every resend INVALIDATES earlier links (users clicking an older email
+     see "link expired"). For real customers set up custom SMTP (e.g.
+     Resend) under Authentication -> Emails -> SMTP settings.
+   - A stuck unconfirmed user can be unblocked from Authentication ->
+     Users -> "..." -> Confirm email.
+5. Check `/ready` on the API, then sign in on the web app.
+
+The database is the existing cloud Supabase project (already at Alembic head
+`0013`), so there is nothing to migrate for a fresh Sevalla deploy. For future
+migrations, open the API app's Web Terminal and run:
+
+```bash
+cd packages/graph && uv run --no-sync alembic upgrade head
+```
+
+## Server deployment (Docker)
 
 Everything runs from `docker compose`. The database is **cloud Supabase**, so
 "the DB and all the data" travel with the `.env` file, not with the containers:

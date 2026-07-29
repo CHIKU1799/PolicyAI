@@ -27,4 +27,5 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.mjs ./
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+# PaaS hosts (Sevalla/Render/etc.) inject PORT; local compose defaults to 3000.
+CMD ["sh", "-c", "npm run start -- -p ${PORT:-3000}"]
