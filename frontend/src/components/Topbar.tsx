@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Menu, Search, Sparkles } from "lucide-react";
 import AlertFeed from "@/components/AlertFeed";
 import CommandPalette from "@/components/CommandPalette";
+import { TourLaunchButton } from "@/components/OnboardingTour";
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": { title: "Compliance Dashboard", subtitle: "Live posture across regulations, obligations & controls" },
@@ -79,9 +80,13 @@ export default function Topbar({ onMenu }: { onMenu?: () => void }) {
         >
           <Search size={18} />
         </button>
-        <AlertFeed />
+        <TourLaunchButton />
+        <div data-tour="alerts">
+          <AlertFeed />
+        </div>
         <Link
           href="/ask"
+          data-tour="ask"
           className="brand-grad flex h-[38px] items-center gap-2 rounded-[10px] px-3 text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(67,56,184,.32)] sm:px-[15px]"
         >
           <Sparkles size={16} />

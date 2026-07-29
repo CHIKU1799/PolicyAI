@@ -22,16 +22,16 @@ import {
 import { getSupabase } from "@/lib/supabase";
 
 const MONITOR = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance" },
-  { href: "/obligations", label: "Obligations", icon: ShieldAlert, hint: "What the regulations require you to do" },
-  { href: "/graph", label: "Knowledge Graph", icon: Share2, hint: "Explore how regulations, topics and deadlines connect" },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance", tour: "nav-dashboard" },
+  { href: "/obligations", label: "Obligations", icon: ShieldAlert, hint: "What the regulations require you to do", tour: "nav-obligations" },
+  { href: "/graph", label: "Knowledge Graph", icon: Share2, hint: "Explore how regulations, topics and deadlines connect", tour: "nav-graph" },
 ];
 const MANAGE = [
-  { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert, hint: "Obligations you are not fully covering yet" },
-  { href: "/controls", label: "Controls Testing", icon: ShieldCheck, hint: "The checks that prove each obligation is met, and their test results" },
+  { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert, hint: "Obligations you are not fully covering yet", tour: "nav-gaps" },
+  { href: "/controls", label: "Controls Testing", icon: ShieldCheck, hint: "The checks that prove each obligation is met, and their test results", tour: "nav-controls" },
   { href: "/policies", label: "Policies", icon: FileText, hint: "Your internal policy documents and versions" },
   { href: "/tasks", label: "Tasks", icon: ListChecks, hint: "Action items generated from obligations" },
-  { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen, hint: "Your company documents and registrations" },
+  { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen, hint: "Your company documents and registrations", tour: "nav-knowledge-base" },
 ];
 
 function Brand() {
@@ -84,8 +84,8 @@ export default function Sidebar() {
     router.refresh();
   }
 
-  const NavItem = ({ href, label, icon: Icon, hint }: { href: string; label: string; icon: typeof LayoutDashboard; hint?: string }) => (
-    <Link href={href} title={hint} className={clsx("nav-link", pathname.startsWith(href) && "nav-link-active")}>
+  const NavItem = ({ href, label, icon: Icon, hint, tour }: { href: string; label: string; icon: typeof LayoutDashboard; hint?: string; tour?: string }) => (
+    <Link href={href} title={hint} data-tour={tour} className={clsx("nav-link", pathname.startsWith(href) && "nav-link-active")}>
       <span className="flex w-[18px] justify-center">
         <Icon size={16} />
       </span>
