@@ -128,7 +128,7 @@ export default function PoliciesPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-[var(--muted)]">{p.owner ?? "—"}</td>
+                      <td className="px-4 py-3 text-[var(--muted)]">{p.owner ?? "-"}</td>
                       <td className="px-4 py-3 text-[var(--muted)]">v{p.current_version}</td>
                       <td className="px-4 py-3">
                         <Badge className={POLICY_STATUS_STYLES[p.status]}>

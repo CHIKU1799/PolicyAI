@@ -3,7 +3,7 @@ import MarketingShell from "@/components/marketing/Shell";
 import { Chip, Cta, Hero, MockCard, Section } from "@/components/marketing/blocks";
 
 export const metadata: Metadata = {
-  title: "Platform — PolicyAI",
+  title: "Platform · PolicyAI",
   description: "Five modules that turn regulatory change into action, end to end.",
 };
 
@@ -110,7 +110,7 @@ export default function PlatformPage() {
           {[
             ["Audit trail for forbearance", 28, "red"],
             ["Board concentration reporting", 76, "amber"],
-            ["Fairness testing — credit", 45, "amber"],
+            ["Fairness testing: credit", 45, "amber"],
             ["Enhanced CDD triggers", 85, "green"],
           ].map(([label, pct, tone]) => (
             <div key={String(label)} className="mb-2">

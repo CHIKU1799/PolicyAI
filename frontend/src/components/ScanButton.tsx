@@ -15,7 +15,7 @@ export default function ScanButton() {
     try {
       const resp = await workerFetch("/scan", { method: "POST" });
       if (!resp.ok) throw new Error(`worker responded ${resp.status}`);
-      setMsg("Scan started — new items will appear as they're processed.");
+      setMsg("Scan started, new items will appear as they're processed.");
     } catch (err) {
       setMsg(`Couldn't reach the worker (${(err as Error).message}).`);
     } finally {

@@ -19,7 +19,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PolicyAI — Regulatory Intelligence",
+  title: "PolicyAI: Regulatory Intelligence",
   description:
     "Continuous monitoring of Indian regulators with obligation mapping and actionable compliance tasks.",
 };

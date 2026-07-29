@@ -4,7 +4,7 @@ import MarketingShell from "@/components/marketing/Shell";
 import { Chip, Cta, Hero } from "@/components/marketing/blocks";
 
 export const metadata: Metadata = {
-  title: "Resources — PolicyAI",
+  title: "Resources · PolicyAI",
   description: "Blog, documentation, changelog and system status.",
 };
 

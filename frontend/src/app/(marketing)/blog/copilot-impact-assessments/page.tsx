@@ -5,7 +5,7 @@ import CopilotHero3D from "@/components/marketing/CopilotHero3D";
 import { Chip, Cta } from "@/components/marketing/blocks";
 
 export const metadata: Metadata = {
-  title: "PolicyAI Copilot now drafts impact assessments — PolicyAI Blog",
+  title: "PolicyAI Copilot now drafts impact assessments · PolicyAI Blog",
   description:
     "Pick a regulation, get an analyst-grade first pass: applicability, severity, the requirements that bite hardest, and prioritized actions.",
 };

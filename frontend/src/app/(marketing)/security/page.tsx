@@ -3,7 +3,7 @@ import MarketingShell from "@/components/marketing/Shell";
 import { Cta, Hero, Section } from "@/components/marketing/blocks";
 
 export const metadata: Metadata = {
-  title: "Security — PolicyAI",
+  title: "Security · PolicyAI",
   description: "How PolicyAI protects and isolates every firm's data.",
 };
 

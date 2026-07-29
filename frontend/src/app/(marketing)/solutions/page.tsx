@@ -3,7 +3,7 @@ import MarketingShell from "@/components/marketing/Shell";
 import { Cta, Hero, Section } from "@/components/marketing/blocks";
 
 export const metadata: Metadata = {
-  title: "Solutions — PolicyAI",
+  title: "Solutions · PolicyAI",
   description: "Purpose-built for regulated Indian BFSI segments.",
 };
 

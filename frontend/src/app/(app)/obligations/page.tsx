@@ -517,7 +517,7 @@ function ObligationTimeline({ regulationNodeId }: { regulationNodeId: string | n
         )}
         {state === "ready" && !hasHistory && (
           <div className="text-xs text-[var(--muted)]">
-            In force since first recorded — no supersessions yet.
+            In force since first recorded, no supersessions yet.
           </div>
         )}
         {state === "ready" && hasHistory && (

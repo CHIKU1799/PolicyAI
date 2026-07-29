@@ -52,7 +52,7 @@ export default function KnowledgeBasePage() {
         body: JSON.stringify({ storage_path: path, filename: file.name, mime: file.type }),
       });
       const body = await resp.json();
-      setMsg(`Processed "${file.name}" — status: ${body.status} (${body.chars} chars).`);
+      setMsg(`Processed "${file.name}", status: ${body.status} (${body.chars} chars).`);
       await refresh();
     } catch (err) {
       setMsg(`Upload failed: ${(err as Error).message}`);
@@ -72,7 +72,7 @@ export default function KnowledgeBasePage() {
       });
       const body = await resp.json();
       setMsg(
-        `Profile derived — entity classes: ${(body.entity_classes ?? []).join(", ") || "none"}.`,
+        `Profile derived. Entity classes: ${(body.entity_classes ?? []).join(", ") || "none"}.`,
       );
     } catch (err) {
       setMsg(`Profile derivation failed: ${(err as Error).message}`);
