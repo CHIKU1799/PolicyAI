@@ -193,6 +193,45 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [canResend, setCanResend] = useState(false);
+
+  // Surface outcomes from the /auth/callback email-link landing, and errors
+  // Supabase appends as a hash fragment (e.g. #error_description=...).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const notice = q.get("notice");
+    const error = q.get("error") ?? h.get("error_description");
+    if (notice) setMsg(notice);
+    if (error) {
+      setMsg(error);
+      setCanResend(true);
+    }
+    if (notice || error) window.history.replaceState({}, "", "/login");
+  }, []);
+
+  async function resendConfirmation() {
+    const supabase = getSupabase();
+    if (!supabase || !email) {
+      setMsg("Enter your email above, then tap resend.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+      setMsg("Confirmation email re-sent. Open the NEWEST email; older links stop working.");
+      setCanResend(false);
+    } catch (err) {
+      setMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -203,21 +242,43 @@ export default function LoginPage() {
     }
     setBusy(true);
     setMsg(null);
+    setCanResend(false);
     try {
       if (mode === "signup") {
         // company_name lands in raw_user_meta_data; the DB trigger provisions a
         // fresh org named from it and makes this user its admin.
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { company_name: company.trim() } },
+          options: {
+            data: { company_name: company.trim() },
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
         });
         if (error) throw error;
-        setMsg("Account created. If email confirmation is on, confirm then sign in.");
+        // Supabase returns a user with no identities when the email is
+        // already registered (it never errors, to avoid leaking accounts).
+        if (data.user && data.user.identities?.length === 0) {
+          setMsg("This email is already registered. Sign in, or resend the confirmation email.");
+          setCanResend(true);
+        } else if (data.session) {
+          router.push("/dashboard");
+          router.refresh();
+          return;
+        } else {
+          setMsg(`Almost there. We emailed a confirmation link to ${email}. Click it to activate your workspace.`);
+        }
         setMode("signin");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          if (/confirm/i.test(error.message)) {
+            setMsg("This email hasn't been confirmed yet. Check your inbox, or resend the confirmation email.");
+            setCanResend(true);
+            return;
+          }
+          throw error;
+        }
         router.push("/dashboard");
         router.refresh();
       }
@@ -316,6 +377,17 @@ export default function LoginPage() {
               style={{ borderColor: "#F0E3C8", background: "#FBF6EA", color: "#8A6116" }}
             >
               {msg}
+              {canResend && (
+                <button
+                  type="button"
+                  onClick={resendConfirmation}
+                  disabled={busy}
+                  className="mt-1.5 block font-semibold underline disabled:opacity-60"
+                  style={{ color: "#1746D6" }}
+                >
+                  Resend confirmation email
+                </button>
+              )}
             </div>
           )}
 

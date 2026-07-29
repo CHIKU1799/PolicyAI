@@ -30,6 +30,8 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
   const isAuthPage = path.startsWith("/login");
+  // Email-link landing route: must run before any session exists.
+  if (path.startsWith("/auth/")) return response;
   // Marketing site is public; the product stays behind auth.
   const isPublic =
     path === "/" ||
