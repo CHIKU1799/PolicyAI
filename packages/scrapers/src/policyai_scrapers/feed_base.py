@@ -73,6 +73,38 @@ def parse_feed_date(value: str | None) -> date | None:
     return None
 
 
+def _parse_items_lenient(xml_text: str) -> list[dict]:
+    """Regex recovery for malformed feeds. Several .gov.in RSS endpoints emit
+    invalid XML (mismatched tags mid-document), which strict parsing rejects
+    wholesale even though the individual <item> fields are intact."""
+    items: list[dict] = []
+    for m in re.finditer(r"<(item|entry)\b.*?</\1>", xml_text, re.I | re.S):
+        block = m.group(0)
+
+        def grab(*tags: str, block: str = block) -> str | None:
+            for t in tags:
+                g = re.search(rf"<{t}\b[^>]*>(.*?)</{t}>", block, re.I | re.S)
+                if g and g.group(1).strip():
+                    body = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", g.group(1), flags=re.S)
+                    return body.strip()
+            return None
+
+        link = grab("link")
+        if link is None:
+            g = re.search(r"<link\b[^>]*href=[\"']([^\"']+)", block, re.I)
+            link = g.group(1) if g else None
+        items.append(
+            {
+                "title": grab("title"),
+                "link": link,
+                "id": grab("guid", "id"),
+                "date": grab("pubDate", "published", "updated", "date"),
+                "content": grab("content:encoded", "content", "description", "summary") or "",
+            }
+        )
+    return items
+
+
 def parse_feed(xml_text: str) -> list[dict]:
     """Return a list of {title, link, id, date, content} dicts for each feed entry,
     handling RSS ``<item>`` and Atom ``<entry>`` without caring about namespaces."""
@@ -80,7 +112,22 @@ def parse_feed(xml_text: str) -> list[dict]:
     def ln(tag: str) -> str:
         return tag.rsplit("}", 1)[-1].lower()
 
-    root = ET.fromstring(xml_text)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        # "junk after document element" (extra bytes after the root closes):
+        # truncate at the root close tag and retry before going lenient.
+        root = None
+        for closer in ("</rss>", "</feed>"):
+            idx = xml_text.rfind(closer)
+            if idx != -1:
+                try:
+                    root = ET.fromstring(xml_text[: idx + len(closer)])
+                    break
+                except ET.ParseError:
+                    root = None
+        if root is None:
+            return _parse_items_lenient(xml_text)
     items: list[dict] = []
     for el in root.iter():
         if ln(el.tag) not in ("item", "entry"):

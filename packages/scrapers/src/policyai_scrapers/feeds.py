@@ -1,11 +1,19 @@
 """Concrete RSS/Atom feed sources, built on ``FeedScraper``.
 
 These broaden coverage beyond RBI/SEBI/IRDAI to tax, trade, cyber and gazette
-notifications — and give a browser-free path that's lighter than Playwright. Each
+notifications, and give a browser-free path that's lighter than Playwright. Each
 class only declares its ``scraper_kind`` + ``regulator_key``; the feed URL is
 configured per ``MonitoringSource`` (so a URL can be re-tuned without code changes).
 eGazette also serves as the MCA bypass: MCA notifications are published there in
 authoritative form, away from MCA's Akamai bot wall.
+
+Source status audit (2026-07-29): PIB and RBI press feeds work over plain HTTP.
+The rest are disabled in ``monitoring_sources`` because their endpoints are
+bot-walled or gone for non-browser clients: CERT-In/FIU serve a JS challenge
+page instead of XML, NPCI/CBDT return WAF 403s, PFRDA/IFSCA have no /rss at
+all, DGFT emits junk past the document root, eGazette's TLS chain is broken.
+Re-enabling them needs Playwright-rendered fetching (see the RBI/SEBI scrapers)
+or discovered alternate endpoints; flip ``enabled`` in the DB once fixed.
 """
 
 from __future__ import annotations
