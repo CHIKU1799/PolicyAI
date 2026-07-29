@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { getSupabase } from "@/lib/supabase";
+import ControlMappingGuide from "@/components/insights/ControlMappingGuide";
 import { PageHeader, Kpi, Badge, DemoBanner, EmptyState } from "@/components/ui";
 import { KpiSkeleton, TableSkeleton } from "@/components/Loading";
 import { EFFECTIVENESS_STYLES, type Control, type ControlTest } from "@/lib/types";
@@ -102,6 +103,8 @@ export default function ControlsPage() {
           <span><b className="text-slate-700">3. Record</b> the result to update effectiveness</span>
         </div>
       </div>
+
+      <ControlMappingGuide />
 
       {loading ? (
         <>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
 import ScanButton from "@/components/ScanButton";
+import PostureImprovement from "@/components/insights/PostureImprovement";
 import { KpiSkeleton } from "@/components/Loading";
 import type { Obligation, Gap, Control, Task, Alert, Severity } from "@/lib/types";
 
@@ -189,7 +190,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="my-3 text-[13.5px] leading-relaxed text-[var(--text-2)]">
-            Posture is <b className="text-[var(--text)]">{posture >= 75 ? "strong" : "developing"}</b> —{" "}
+            Posture is <b className="text-[var(--text)]">{posture >= 75 ? "strong" : "developing"}</b>:{" "}
             <b className="text-[var(--text)]">{obligations.filter((o) => o.status === "open").length} active obligations</b>{" "}
             mapped, {openGaps} open {openGaps === 1 ? "gap" : "gaps"} to remediate, and{" "}
             {controls.filter((c) => c.effectiveness === "untested").length} controls still untested.
@@ -231,13 +232,16 @@ export default function DashboardPage() {
       </div>
       )}
 
+      {/* posture improvement: version-over-version progress */}
+      <PostureImprovement />
+
       {/* main grid */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">
         {/* horizon feed */}
         <div className="card">
           <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-5 py-4">
             <div className="flex items-center gap-2.5">
-              <span className="serif text-[15.5px] font-medium">Horizon — latest alerts</span>
+              <span className="serif text-[15.5px] font-medium">Horizon: latest alerts</span>
               <span className="flex items-center gap-1.5 rounded-full bg-[#E6F4EC] px-2 py-0.5 text-[11px] font-semibold text-[var(--success)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" style={{ animation: "paiPulse 1.6s infinite" }} />
                 Live
@@ -248,7 +252,7 @@ export default function DashboardPage() {
           <div>
             {alerts.length === 0 && (
               <div className="px-5 py-10 text-center text-[13px] text-[var(--muted)]">
-                No alerts yet — run a scan to ingest the latest regulations.
+                No alerts yet, run a scan to ingest the latest regulations.
               </div>
             )}
             {alerts.map((a) => (
@@ -322,7 +326,7 @@ export default function DashboardPage() {
               if (gone.length === 0)
                 return (
                   <div className="text-[13px] text-[var(--muted)]">
-                    Nothing superseded yet — everything mapped is currently in force.
+                    Nothing superseded yet, everything mapped is currently in force.
                   </div>
                 );
               return gone.map((o) => (
