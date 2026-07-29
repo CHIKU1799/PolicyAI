@@ -133,6 +133,19 @@ async function completeFree(system: string, user: string): Promise<LlmResult> {
 }
 
 export async function POST(req: NextRequest) {
+  // Never let an exception escape as a Next.js HTML error page: the client
+  // always expects JSON from this route.
+  try {
+    return await handleAsk(req);
+  } catch (e) {
+    return NextResponse.json(
+      { detail: `backup Copilot error: ${(e as Error).message.slice(0, 200)}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleAsk(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) return NextResponse.json({ detail: "not configured" }, { status: 503 });

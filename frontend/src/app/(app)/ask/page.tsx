@@ -30,7 +30,7 @@ export default function AskPage() {
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Mutate only the trailing (assistant) message — the one we're streaming into.
+  // Mutate only the trailing (assistant) message, the one we are streaming into.
   function updateLast(fn: (m: Msg) => Msg) {
     setMessages((arr) => arr.map((m, i) => (i === arr.length - 1 ? fn(m) : m)));
   }
@@ -116,6 +116,11 @@ export default function AskPage() {
             },
             body: JSON.stringify({ question: q }),
           });
+          if (!(resp.headers.get("content-type") ?? "").includes("application/json")) {
+            throw new Error(
+              `backup route returned ${resp.status} with a non-JSON page; redeploy the frontend with current env vars`,
+            );
+          }
           const data = await resp.json();
           if (!resp.ok) throw new Error(data?.detail ?? `backup responded ${resp.status}`);
           updateLast((m) => ({ ...m, text: data.answer, citations: data.citations ?? [] }));

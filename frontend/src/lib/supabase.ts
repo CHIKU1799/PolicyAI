@@ -29,6 +29,18 @@ export const WORKER_URL =
  * anonymous call (demo org) when there is no session.
  */
 export async function workerFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  // A deployed build that still points at localhost means NEXT_PUBLIC_API_URL
+  // was missing at build time. Fail with the cause instead of a silent
+  // "Failed to fetch" against the visitor's own machine.
+  if (
+    typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname) &&
+    /localhost|127\.0\.0\.1/.test(WORKER_URL)
+  ) {
+    throw new Error(
+      "worker URL not configured: set NEXT_PUBLIC_API_URL on the web app and rebuild",
+    );
+  }
   const headers = new Headers(init.headers);
   const supabase = getSupabase();
   if (supabase) {
