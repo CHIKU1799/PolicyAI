@@ -211,13 +211,13 @@ export default function TeamPage() {
         <TableSkeleton />
       ) : (
         <div className="card overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full text-sm sm:min-w-[560px]">
             <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3">Member</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Joined</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-3 py-3 sm:px-4">Member</th>
+                <th className="px-3 py-3 sm:px-4">Role</th>
+                <th className="hidden px-4 py-3 sm:table-cell">Joined</th>
+                <th className="px-3 py-3 text-right sm:px-4">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -225,21 +225,21 @@ export default function TeamPage() {
                 const lastAdmin = m.role === "admin" && adminCount <= 1;
                 return (
                   <tr key={m.user_id}>
-                    <td className="px-4 py-3">
+                    <td className="max-w-[150px] px-3 py-3 sm:max-w-none sm:px-4">
                       <div className="flex items-center gap-2 font-medium text-slate-800">
-                        <Users size={15} className="text-[#2E6BF7]" />
-                        {m.email ?? m.user_id}
+                        <Users size={15} className="shrink-0 text-[#2E6BF7]" />
+                        <span className="truncate">{m.email ?? m.user_id}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 sm:px-4">
                       <Badge className={ROLE_STYLE[m.role] ?? "bg-slate-100 text-slate-600"}>
                         {m.role.replace(/_/g, " ")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-[var(--muted)]">
+                    <td className="hidden px-4 py-3 text-[var(--muted)] sm:table-cell">
                       {m.joined_at ? new Date(m.joined_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right sm:px-4">
                       <button
                         onClick={() => toggleRole(m)}
                         disabled={busy === m.user_id || lastAdmin}
@@ -279,33 +279,33 @@ export default function TeamPage() {
           </div>
         ) : (
           <div className="card overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
+            <table className="w-full text-sm sm:min-w-[480px]">
               <thead className="border-b border-[var(--border)] bg-slate-50 text-left text-xs uppercase tracking-wide text-[var(--muted)]">
                 <tr>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Invited</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-3 py-3 sm:px-4">Email</th>
+                  <th className="px-3 py-3 sm:px-4">Role</th>
+                  <th className="hidden px-4 py-3 sm:table-cell">Invited</th>
+                  <th className="px-3 py-3 text-right sm:px-4">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {invites.map((inv) => (
                   <tr key={inv.id}>
-                    <td className="px-4 py-3">
+                    <td className="max-w-[150px] px-3 py-3 sm:max-w-none sm:px-4">
                       <div className="flex items-center gap-2 text-slate-800">
-                        <Mail size={15} className="text-[var(--muted)]" />
-                        {inv.email}
+                        <Mail size={15} className="shrink-0 text-[var(--muted)]" />
+                        <span className="truncate">{inv.email}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 sm:px-4">
                       <Badge className={ROLE_STYLE[inv.role] ?? "bg-slate-100 text-slate-600"}>
                         {inv.role}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-[var(--muted)]">
+                    <td className="hidden px-4 py-3 text-[var(--muted)] sm:table-cell">
                       {inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right sm:px-4">
                       <button
                         onClick={() => cancelInvite(inv)}
                         disabled={busy === inv.id}
