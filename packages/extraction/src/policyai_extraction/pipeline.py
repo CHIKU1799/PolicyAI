@@ -80,7 +80,11 @@ async def process_document(
         )
         try:
             extracted = await llm.extract(
-                prompt, ExtractedRegulation, system=system, model=extract_model
+                prompt,
+                ExtractedRegulation,
+                system=system,
+                model=extract_model,
+                cache_purpose="extract",
             )
             break
         except Exception as exc:

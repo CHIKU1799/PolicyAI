@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.deps import get_session
+from policyai_api.ttl_cache import ttl_cache
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -150,13 +151,14 @@ async def _edges_touching(session: AsyncSession, node_ids: set) -> list[Edge]:
     )
 
 
-@router.get("/subgraph", response_model=Subgraph)
-async def subgraph(
-    center: str | None = Query(default=None, description="canonical_key to center on"),
-    hops: int = Query(default=1, ge=1, le=2),
-    limit: int = Query(default=200, le=600),
-    session: AsyncSession = Depends(get_session),
+# The knowledge graph is the shared regulatory KG (no org-scoped data on any
+# node/edge — the explorer is public), so the cache key is scope + params.
+# If graph data ever becomes tenant-scoped, the org id MUST join this key.
+@ttl_cache(seconds=300, max_entries=256)
+async def _cached_subgraph(
+    key: tuple[str, str | None, int, int], session: AsyncSession
 ) -> Subgraph:
+    _scope, center, hops, limit = key
     if center:
         # A key can exist as both an entity_class and a topic (e.g. "nbfc");
         # prefer the structural anchor types so centering behaves predictably.
@@ -210,3 +212,13 @@ async def subgraph(
             for e in edges
         ],
     )
+
+
+@router.get("/subgraph", response_model=Subgraph)
+async def subgraph(
+    center: str | None = Query(default=None, description="canonical_key to center on"),
+    hops: int = Query(default=1, ge=1, le=2),
+    limit: int = Query(default=200, le=600),
+    session: AsyncSession = Depends(get_session),
+) -> Subgraph:
+    return await _cached_subgraph(("kg", center, hops, limit), session)

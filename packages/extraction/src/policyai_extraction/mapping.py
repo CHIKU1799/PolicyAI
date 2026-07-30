@@ -255,6 +255,7 @@ async def map_obligation(
         system=system,
         model=mapping_model,
         max_tokens=4096,
+        cache_purpose="mapping",
     )
     if not mapping.is_relevant:
         return None

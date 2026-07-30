@@ -736,3 +736,22 @@ class DemoRequest(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class LlmCache(Base):
+    """Persistent cache of deterministic LLM extraction results.
+
+    One row per unique request (sha256 of provider + model + prompt + schema +
+    params). A killed-and-rerun backfill replays completed extractions from
+    here instead of paying for them again."""
+
+    __tablename__ = "llm_cache"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    cache_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_session
+from policyai_api.ttl_cache import ttl_cache
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -44,6 +45,13 @@ class InsightsResponse(BaseModel):
     insights: list[Insight]
 
 
+# Insights aggregate several tables per request and the dashboard polls them;
+# a 90s in-process cache absorbs that. Keyed by org id — tenants never share.
+@ttl_cache(seconds=90, max_entries=512)
+async def _cached_insights(org_id: UUID, session: AsyncSession) -> dict:
+    return await compute_insights(session, org_id)
+
+
 @router.get("", response_model=InsightsResponse)
 async def insights(
     org_id: UUID | None = None,
@@ -52,4 +60,4 @@ async def insights(
 ) -> InsightsResponse:
     # Org comes from the verified token; a client-supplied org_id is honored
     # only for platform admins (the operator console inspecting a firm).
-    return InsightsResponse(**await compute_insights(session, effective_org(principal, org_id)))
+    return InsightsResponse(**await _cached_insights(effective_org(principal, org_id), session))

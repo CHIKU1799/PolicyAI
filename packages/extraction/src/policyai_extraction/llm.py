@@ -39,6 +39,37 @@ PRICING: dict[str, tuple[float, float]] = {
 MODEL_EXTRACTION = os.getenv("ANTHROPIC_MODEL_EXTRACTION", "claude-sonnet-4-6")
 MODEL_MAPPING = os.getenv("ANTHROPIC_MODEL_MAPPING", "claude-opus-4-8")
 
+# Anthropic prompt-cache pricing relative to the model's input rate: reads are
+# ~10% of a fresh input token, writes carry a 25% premium.
+CACHE_READ_RATE = 0.10
+CACHE_WRITE_RATE = 1.25
+
+# Below ~1024 chars the prefix is under the minimum cacheable size for most
+# models and the marker is silently ignored — skip it and keep requests plain.
+_MIN_CACHEABLE_SYSTEM_CHARS = 1024
+
+
+def _cacheable_system(system: str) -> str | list[dict]:
+    """System prompt as a cache-marked content block when big enough to matter.
+
+    Bulk extraction sends hundreds of calls with the same system prefix; marking
+    it ``ephemeral`` makes every call after the first read it at ~10% price."""
+    if len(system) > _MIN_CACHEABLE_SYSTEM_CHARS:
+        return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    return system
+
+
+def _with_tool_cache(tools: list[dict]) -> list[dict]:
+    """Copy of ``tools`` with a cache breakpoint on the last entry.
+
+    Anthropic renders tools first in the prompt, so one marker on the last tool
+    caches the whole tools prefix. Copies so the caller's list is not mutated."""
+    if not tools:
+        return tools
+    out = list(tools)
+    out[-1] = {**out[-1], "cache_control": {"type": "ephemeral"}}
+    return out
+
 
 def is_payload_too_large(exc: Exception) -> bool:
     """A 413 'request too large' from an OpenAI-compatible gateway (Groq et al)."""
@@ -137,31 +168,71 @@ class CostTracker:
 
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     calls: int = 0
     by_model: dict[str, dict[str, int]] = field(default_factory=dict)
 
-    def record(self, model: str, in_tok: int, out_tok: int) -> None:
+    def record(
+        self,
+        model: str,
+        in_tok: int,
+        out_tok: int,
+        *,
+        cache_read: int = 0,
+        cache_write: int = 0,
+    ) -> None:
+        """Record one call. ``in_tok`` is the uncached input share; cached reads
+        and cache writes are tracked separately so they price at their own rates."""
         self.input_tokens += in_tok
         self.output_tokens += out_tok
+        self.cache_read_tokens += cache_read
+        self.cache_write_tokens += cache_write
         self.calls += 1
-        bucket = self.by_model.setdefault(model, {"input": 0, "output": 0, "calls": 0})
+        bucket = self.by_model.setdefault(
+            model, {"input": 0, "output": 0, "calls": 0, "cache_read": 0, "cache_write": 0}
+        )
         bucket["input"] += in_tok
         bucket["output"] += out_tok
         bucket["calls"] += 1
+        bucket["cache_read"] += cache_read
+        bucket["cache_write"] += cache_write
 
     @property
     def usd(self) -> float:
         total = 0.0
         for model, b in self.by_model.items():
             in_rate, out_rate = PRICING.get(model, (0.0, 0.0))
-            total += b["input"] / 1_000_000 * in_rate + b["output"] / 1_000_000 * out_rate
+            total += (
+                b["input"] / 1_000_000 * in_rate
+                + b["output"] / 1_000_000 * out_rate
+                + b.get("cache_read", 0) / 1_000_000 * in_rate * CACHE_READ_RATE
+                + b.get("cache_write", 0) / 1_000_000 * in_rate * CACHE_WRITE_RATE
+            )
+        return round(total, 4)
+
+    @property
+    def usd_saved(self) -> float:
+        """Net USD saved versus running the same calls uncached: reads at 10%
+        instead of 100% of the input rate, minus the 25% write premium."""
+        total = 0.0
+        for model, b in self.by_model.items():
+            in_rate, _ = PRICING.get(model, (0.0, 0.0))
+            total += b.get("cache_read", 0) / 1_000_000 * in_rate * (1 - CACHE_READ_RATE)
+            total -= b.get("cache_write", 0) / 1_000_000 * in_rate * (CACHE_WRITE_RATE - 1)
         return round(total, 4)
 
     def summary(self) -> str:
-        return (
+        base = (
             f"{self.calls} calls, {self.input_tokens} in / {self.output_tokens} out "
             f"tokens, ${self.usd}"
         )
+        if self.cache_read_tokens or self.cache_write_tokens:
+            base += (
+                f" ({self.cache_read_tokens} cached-read tokens, "
+                f"~${self.usd_saved} saved vs uncached)"
+            )
+        return base
 
 
 def _to_openai_tool(name: str, description: str, schema: dict) -> dict:
@@ -221,13 +292,13 @@ class LLMClient:
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = _cacheable_system(system)
         if thinking:
             kwargs["thinking"] = {"type": "adaptive"}
         if effort:
             kwargs["output_config"] = {"effort": effort}
         resp = await self._client.messages.create(**kwargs)
-        self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+        self._record_anthropic(model, resp.usage)
         return "".join(b.text for b in resp.content if b.type == "text")
 
     # ---- structured extraction (forced tool/function call) ----------------
@@ -241,8 +312,61 @@ class LLMClient:
         max_tokens: int = 8192,
         tool_name: str = "record",
         tool_description: str | None = None,
+        cache_purpose: str | None = None,
     ) -> T:
+        """Structured extraction. When ``cache_purpose`` is set (and
+        ``LLM_RESULT_CACHE`` != "0"), the validated result is persisted keyed by
+        a hash of the full request, so a killed-and-rerun backfill replays past
+        work for free instead of paying for it twice."""
         description = tool_description or f"Record the extracted {schema.__name__}."
+        cache_key: str | None = None
+        effective_model = self._model if self.provider == "openai_compatible" else model
+        if cache_purpose and os.getenv("LLM_RESULT_CACHE", "1") != "0":
+            from policyai_extraction import result_cache
+
+            cache_key = result_cache.make_key(
+                {
+                    "provider": self.provider,
+                    "model": effective_model,
+                    "system": system,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "schema": {"name": schema.__name__, "json": schema.model_json_schema()},
+                    "max_tokens": max_tokens,
+                    "purpose": cache_purpose,
+                }
+            )
+            cached = await result_cache.get(cache_key)
+            if cached is not None:
+                # Replayed result — no tokens spent, so no cost recorded.
+                return _validate_with_repair(schema, cached)
+        result = await self._extract_uncached(
+            prompt,
+            schema,
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            tool_name=tool_name,
+            description=description,
+        )
+        if cache_key is not None:
+            from policyai_extraction import result_cache
+
+            await result_cache.put(
+                cache_key, effective_model, cache_purpose, result.model_dump(mode="json")
+            )
+        return result
+
+    async def _extract_uncached(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        system: str | None,
+        model: str,
+        max_tokens: int,
+        tool_name: str,
+        description: str,
+    ) -> T:
         if self.provider == "openai_compatible":
             messages = ([{"role": "system", "content": system}] if system else []) + [
                 {"role": "user", "content": prompt}
@@ -293,14 +417,14 @@ class LLMClient:
         kwargs: dict = {
             "model": model,
             "max_tokens": max_tokens,
-            "tools": [tool],
+            "tools": _with_tool_cache([tool]),
             "tool_choice": {"type": "tool", "name": tool_name},
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = _cacheable_system(system)
         resp = await self._client.messages.create(**kwargs)
-        self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+        self._record_anthropic(model, resp.usage)
         for block in resp.content:
             if block.type == "tool_use" and block.name == tool_name:
                 return schema.model_validate(block.input)
@@ -322,11 +446,17 @@ class LLMClient:
             return await self._converse_openai(
                 system, messages, tools, tool_runner, max_tokens, max_iters
             )
+        sys_param = _cacheable_system(system)
+        cached_tools = _with_tool_cache(tools)
         for _ in range(max_iters):
             resp = await self._client.messages.create(
-                model=model, max_tokens=max_tokens, system=system, tools=tools, messages=messages
+                model=model,
+                max_tokens=max_tokens,
+                system=sys_param,
+                tools=cached_tools,
+                messages=messages,
             )
-            self.cost.record(model, resp.usage.input_tokens, resp.usage.output_tokens)
+            self._record_anthropic(model, resp.usage)
             if resp.stop_reason != "tool_use":
                 return "".join(b.text for b in resp.content if b.type == "text")
             messages.append({"role": "assistant", "content": resp.content})
@@ -366,18 +496,20 @@ class LLMClient:
             if text:
                 yield text
             return
+        sys_param = _cacheable_system(system)
+        cached_tools = _with_tool_cache(tools)
         for _ in range(max_iters):
             async with self._client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
-                system=system,
-                tools=tools,
+                system=sys_param,
+                tools=cached_tools,
                 messages=messages,
             ) as stream:
                 async for delta in stream.text_stream:
                     yield delta
                 final = await stream.get_final_message()
-            self.cost.record(model, final.usage.input_tokens, final.usage.output_tokens)
+            self._record_anthropic(model, final.usage)
             if final.stop_reason != "tool_use":
                 return
             messages.append({"role": "assistant", "content": final.content})
@@ -426,14 +558,35 @@ class LLMClient:
                 oai_messages.append({"role": "tool", "tool_call_id": tc.id, "content": output})
         return ""
 
+    def _record_anthropic(self, model: str, usage) -> None:
+        """Anthropic usage: ``input_tokens`` already excludes the cached share,
+        so the cache read/write counters record cleanly alongside it."""
+        self.cost.record(
+            model,
+            usage.input_tokens,
+            usage.output_tokens,
+            cache_read=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_write=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )
+
     def _record_openai(self, resp) -> None:
         usage = getattr(resp, "usage", None)
-        if usage:
-            self.cost.record(
-                self._model,
-                getattr(usage, "prompt_tokens", 0) or 0,
-                getattr(usage, "completion_tokens", 0) or 0,
-            )
+        if not usage:
+            return
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        # Groq/Moonshot/Z.ai cache server-side automatically and report the
+        # cached share in prompt_tokens_details.cached_tokens. Their
+        # prompt_tokens INCLUDES that share, so split it out to price the
+        # cached part at ~10% of the input rate (matching Anthropic semantics).
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = (getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
+        cached = min(cached, prompt_tokens)
+        self.cost.record(
+            self._model,
+            prompt_tokens - cached,
+            getattr(usage, "completion_tokens", 0) or 0,
+            cache_read=cached,
+        )
 
     async def aclose(self) -> None:
         if self.provider == "openai_compatible":
