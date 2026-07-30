@@ -100,3 +100,63 @@ body {
     animation: paiSlide 0.35s ease both;
   }
 }
+
+/* --- Landing v2 additions (appended; do not modify rules above) --- */
+@keyframes paiRise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes paiFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+@keyframes paiDash {
+  to {
+    stroke-dashoffset: -240;
+  }
+}
+@keyframes paiGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.anim-rise {
+  animation: paiRise 0.5s ease both;
+}
+.anim-float {
+  animation: paiFloat 7s ease-in-out infinite;
+}
+.anim-dash {
+  stroke-dasharray: 240;
+  animation: paiDash 5s linear infinite;
+}
+.anim-grow {
+  transform-origin: left;
+  animation: paiGrow 1.2s ease both;
+}
+.anim-pulse-soft {
+  animation: paiPulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-rise,
+  .anim-float,
+  .anim-dash,
+  .anim-grow,
+  .anim-pulse-soft {
+    animation: none !important;
+  }
+}

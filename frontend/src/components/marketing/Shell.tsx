@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 export const NAV: {
@@ -60,118 +61,125 @@ export const NAV: {
   { label: "Pricing", href: "/pricing" },
 ];
 
-function Caret() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M6 9l6 6 6-6" stroke="#B6B9BF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+/** Pill-tab nav in the landing v2 design language. */
+const TABS: { label: string; href: string }[] = [
+  { label: "Home", href: "/" },
+  { label: "Platform", href: "/platform" },
+  { label: "Solutions", href: "/solutions" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Security", href: "/security" },
+  { label: "Resources", href: "/resources" },
+  { label: "Contact", href: "/contact" },
+];
 
 export function MarketingNav() {
-  const [open, setOpen] = useState<string | null>(null);
+  const pathname = usePathname() || "/";
+  const [open, setOpen] = useState(false);
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   return (
-    <div className="sticky top-0 z-50">
-      <div
-        style={{ background: "#0C1A38", color: "#E4E2F4" }}
-        className="px-4 py-1.5 text-center text-[12px]"
-      >
-        <span
-          className="mr-2 rounded px-2 py-0.5 text-[10px] font-bold tracking-wide"
-          style={{ background: "rgba(255,255,255,.12)" }}
-        >
-          NEW
-        </span>
-        PolicyAI Copilot now drafts impact assessments automatically{" "}
-        <Link href="/blog/copilot-impact-assessments" className="font-semibold text-white hover:underline">
-          Read more →
+    <nav
+      className="sticky top-0 z-50 border-b"
+      style={{
+        background: "rgba(245,244,242,.86)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderColor: "#EAE9E5",
+      }}
+    >
+      <div className="mx-auto flex h-[62px] max-w-[1304px] items-center gap-4 px-5 md:px-8 lg:gap-6">
+        <Link href="/" className="flex flex-none items-center gap-[9px] no-underline">
+          <span className="h-6 w-6 rounded-lg brand-grad" aria-hidden />
+          <span className="text-[16px] font-extrabold tracking-tight" style={{ color: "#15161B" }}>
+            PolicyAI
+          </span>
         </Link>
-      </div>
-      <header
-        className="border-b px-5"
-        style={{ background: "rgba(255,255,255,.92)", backdropFilter: "blur(10px)", borderColor: "#E8E7E2" }}
-      >
-        <div className="mx-auto flex h-[58px] max-w-6xl items-center">
-          <Link href="/" className="flex items-center gap-2 no-underline">
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-extrabold text-white"
-              style={{ background: "linear-gradient(135deg,#2E6BF7,#1746D6)" }}
+        <div className="hidden flex-1 items-center gap-1 lg:flex">
+          {TABS.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="rounded-full px-[13px] py-[7px] text-[13.5px] font-semibold no-underline transition-colors hover:text-[#15161B]"
+              style={
+                isActive(t.href)
+                  ? { background: "rgba(75,64,196,.1)", color: "#4B40C4" }
+                  : { color: "#5B5E66" }
+              }
             >
-              P
-            </span>
-            <span className="text-[18px] font-extrabold tracking-tight" style={{ color: "#15254E" }}>
-              Policy<span style={{ color: "#1E5EF6" }}>AI</span>
-            </span>
+              {t.label}
+            </Link>
+          ))}
+        </div>
+        <div className="ml-auto flex flex-none items-center gap-3 lg:ml-0">
+          <Link
+            href="/login"
+            className="hidden whitespace-nowrap text-[13.5px] font-semibold no-underline hover:text-[#15161B] sm:block"
+            style={{ color: "#5B5E66" }}
+          >
+            Sign in
           </Link>
-          <nav className="ml-6 hidden items-center gap-0.5 md:flex">
-            {NAV.map((n) => (
-              <div
-                key={n.label}
-                className="relative"
-                onMouseEnter={() => setOpen(n.label)}
-                onMouseLeave={() => setOpen(null)}
+          <Link
+            href="/login"
+            className="whitespace-nowrap rounded-[11px] px-[18px] py-[9px] text-[13.5px] font-semibold text-white no-underline"
+            style={{ background: "#4B40C4", boxShadow: "0 4px 14px rgba(75,64,196,.24)" }}
+          >
+            Start free
+          </Link>
+          <button
+            type="button"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] border lg:hidden"
+            style={{ borderColor: "#E2E1DC", background: "#fff", color: "#3A3D44" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              {open ? (
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              ) : (
+                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              )}
+            </svg>
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="border-t px-5 py-3 lg:hidden" style={{ borderColor: "#EAE9E5" }}>
+          <div className="flex flex-col gap-1">
+            {TABS.map((t) => (
+              <Link
+                key={t.href}
+                href={t.href}
+                onClick={() => setOpen(false)}
+                className="rounded-[10px] px-3 py-2 text-[14px] font-semibold no-underline"
+                style={
+                  isActive(t.href)
+                    ? { background: "rgba(75,64,196,.1)", color: "#4B40C4" }
+                    : { color: "#3A3D44" }
+                }
               >
-                <Link
-                  href={n.href}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13.5px] font-medium no-underline hover:bg-[#F1F0EC]"
-                  style={{ color: "#54565E" }}
-                >
-                  {n.label}
-                  {n.items && <Caret />}
-                </Link>
-                {n.items && open === n.label && (
-                  <div
-                    className="absolute left-0 top-full w-72 rounded-xl border bg-white p-2 shadow-xl"
-                    style={{ borderColor: "#E8E7E2", boxShadow: "0 16px 40px -12px rgba(21,37,78,.18)" }}
-                  >
-                    {n.items.map((it) => (
-                      <Link
-                        key={it.href}
-                        href={it.href}
-                        className="block rounded-lg px-3 py-2 no-underline hover:bg-[#F5F4F2]"
-                      >
-                        <div className="text-[13px] font-medium" style={{ color: "#1A1C22" }}>
-                          {it.label}
-                        </div>
-                        <div className="text-[11px]" style={{ color: "#71757E" }}>
-                          {it.sub}
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+                {t.label}
+              </Link>
             ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-2.5">
             <Link
               href="/login"
-              className="px-3 py-2 text-[13.5px] font-semibold no-underline"
+              onClick={() => setOpen(false)}
+              className="rounded-[10px] px-3 py-2 text-[14px] font-semibold no-underline sm:hidden"
               style={{ color: "#3A3D44" }}
             >
               Sign in
             </Link>
-            <Link
-              href="/contact"
-              className="rounded-[10px] px-4 py-2 text-[13.5px] font-semibold text-white no-underline"
-              style={{
-                background: "linear-gradient(135deg,#2E6BF7,#1746D6)",
-                boxShadow: "0 2px 8px rgba(23,70,214,.3)",
-              }}
-            >
-              Book a demo
-            </Link>
           </div>
         </div>
-      </header>
-    </div>
+      )}
+    </nav>
   );
 }
 
 export function MarketingFooter() {
   return (
     <footer className="border-t px-5 py-12" style={{ background: "#FCFBFA", borderColor: "#E8E7E2" }}>
-      <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-6xl gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
         <div>
           <div className="text-[16px] font-extrabold" style={{ color: "#15254E" }}>
             Policy<span style={{ color: "#1E5EF6" }}>AI</span>
