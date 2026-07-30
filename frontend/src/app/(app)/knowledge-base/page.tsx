@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UploadCloud, FileText, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { UploadCloud, FileText, Sparkles, ShieldAlert } from "lucide-react";
 import { getSupabase, KB_BUCKET, workerFetch } from "@/lib/supabase";
 import { PageHeader, Badge, DemoBanner } from "@/components/ui";
+import { useOrgRole } from "@/lib/useOrgRole";
 import type { CompanyDocument } from "@/lib/types";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -14,6 +16,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export default function KnowledgeBasePage() {
+  const { role, loading: roleLoading } = useOrgRole();
   const [configured, setConfigured] = useState(true);
   const [docs, setDocs] = useState<CompanyDocument[]>([]);
   const [busy, setBusy] = useState(false);
@@ -79,6 +82,30 @@ export default function KnowledgeBasePage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Wait for the role before rendering: members must never see the upload UI,
+  // not even for a frame.
+  if (roleLoading) return null;
+
+  if (role === "member") {
+    return (
+      <div className="card flex flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EAF0FE]">
+          <ShieldAlert size={22} className="text-[#2E6BF7]" />
+        </div>
+        <div className="mt-3 text-sm font-semibold text-[var(--text)]">Admins only</div>
+        <p className="mt-1 max-w-md text-sm text-[var(--muted)]">
+          The knowledge base is managed by your organization&apos;s admins.
+        </p>
+        <Link
+          href="/dashboard"
+          className="mt-4 text-sm font-medium text-[#2E6BF7] hover:underline"
+        >
+          Back to dashboard
+        </Link>
+      </div>
+    );
   }
 
   return (

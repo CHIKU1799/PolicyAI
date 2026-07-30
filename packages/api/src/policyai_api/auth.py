@@ -18,7 +18,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import Depends, Header, HTTPException
-from policyai_graph.models_app import DEFAULT_ORG_ID, Membership, PlatformAdmin
+from policyai_graph.models_app import DEFAULT_ORG_ID, Membership, PlatformAdmin, Role
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,10 +35,17 @@ class Principal:
     email: str | None
     org_id: UUID
     is_platform_admin: bool
+    # The caller's role in their org (memberships.role), None when anonymous or
+    # when the user has no membership (e.g. a platform admin without an org).
+    org_role: str | None = None
 
     @property
     def authenticated(self) -> bool:
         return self.user_id is not None
+
+    @property
+    def is_org_admin(self) -> bool:
+        return self.org_role == Role.ADMIN.value
 
 
 async def _supabase_user(token: str) -> dict | None:
@@ -83,19 +90,17 @@ async def resolve_principal(
         await session.execute(select(PlatformAdmin.user_id).where(PlatformAdmin.user_id == user_id))
     ).scalar_one_or_none() is not None
 
-    org_id = (
-        (
-            await session.execute(
-                select(Membership.org_id)
-                .where(Membership.user_id == user_id)
-                .order_by(Membership.created_at.asc())
-            )
+    membership = (
+        await session.execute(
+            select(Membership.org_id, Membership.role)
+            .where(Membership.user_id == user_id)
+            .order_by(Membership.created_at.asc())
         )
-        .scalars()
-        .first()
-    )
+    ).first()
+    org_id = membership[0] if membership else None
+    org_role = membership[1] if membership else None
 
-    return Principal(user_id, email, org_id or DEFAULT_ORG_ID, is_admin)
+    return Principal(user_id, email, org_id or DEFAULT_ORG_ID, is_admin, org_role)
 
 
 async def require_platform_admin(
@@ -104,6 +109,18 @@ async def require_platform_admin(
     """Guard for the /admin console: only platform super-admins pass."""
     if not principal.is_platform_admin:
         raise HTTPException(status_code=403, detail="platform admin required")
+    return principal
+
+
+async def require_org_admin(
+    principal: Principal = Depends(resolve_principal),
+) -> Principal:
+    """Guard for org team management: only the org's own admins (or platform
+    super-admins) pass."""
+    if principal.is_platform_admin:
+        return principal
+    if not principal.authenticated or not principal.is_org_admin:
+        raise HTTPException(status_code=403, detail="org admin required")
     return principal
 
 

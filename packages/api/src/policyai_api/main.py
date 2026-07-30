@@ -24,6 +24,7 @@ from policyai_api.routes import (
     graph,
     insights,
     internal,
+    org,
     profile,
     scan,
     timeline,
@@ -34,9 +35,7 @@ app = FastAPI(title="PolicyAI Worker", version="0.1.0")
 _origins = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",")]
 # Regex complement to the explicit list, so PaaS-generated frontend URLs
 # (Sevalla/Vercel preview deploys) don't require an env edit per deploy.
-_origin_regex = os.getenv(
-    "FRONTEND_ORIGIN_REGEX", r"https://[a-z0-9-]+\.sevalla\.app"
-)
+_origin_regex = os.getenv("FRONTEND_ORIGIN_REGEX", r"https://[a-z0-9-]+\.sevalla\.app")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
@@ -55,6 +54,7 @@ app.include_router(timeline.router)
 app.include_router(insights.router)
 app.include_router(admin.router)
 app.include_router(contact.router)
+app.include_router(org.router)
 
 
 @app.get("/health")

@@ -18,8 +18,10 @@ import {
   LogOut,
   ShieldHalf,
   Gauge,
+  Users,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { useOrgRole } from "@/lib/useOrgRole";
 
 const MONITOR = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance", tour: "nav-dashboard" },
@@ -56,6 +58,7 @@ export default function Sidebar() {
   const [score, setScore] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const { role, loading: roleLoading } = useOrgRole();
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -134,9 +137,20 @@ export default function Sidebar() {
 
         <SectionLabel className="pt-4">Manage</SectionLabel>
         <div className="flex flex-col gap-0.5">
-          {MANAGE.map((i) => (
-            <NavItem key={i.href} {...i} />
-          ))}
+          {MANAGE.map((i) => {
+            // Knowledge Base is admin-managed: hidden from org members, and
+            // withheld until the role is known to avoid a flash-then-vanish.
+            if (i.href === "/knowledge-base" && (roleLoading || role === "member")) return null;
+            return <NavItem key={i.href} {...i} />;
+          })}
+          {!roleLoading && role === "admin" && (
+            <NavItem
+              href="/team"
+              label="Team"
+              icon={Users}
+              hint="Invite teammates and manage their roles"
+            />
+          )}
         </div>
 
         {isAdmin && (
