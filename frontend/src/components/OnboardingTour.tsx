@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  CheckCircle2,
   HelpCircle,
   LayoutDashboard,
   PartyPopper,
@@ -26,6 +26,12 @@ import { getSupabase } from "@/lib/supabase";
 // automatically for users who have never seen it (persisted in localStorage,
 // keyed by the Supabase user id when available) and can be replayed anytime
 // via the TourLaunchButton in the Topbar.
+//
+// Presentation: a true spotlight cutout (the highlighted feature stays fully
+// sharp and undimmed while everything around it darkens) plus a compact card
+// anchored next to the target with a pointer arrow. Steps without a visible
+// target fall back to a centered card; on mobile the card docks to the bottom
+// while the cutout still tracks the target.
 
 const OPEN_EVENT = "policyai:tour:open";
 const STORAGE_PREFIX = "policyai.tour.v1";
@@ -143,6 +149,32 @@ export function TourLaunchButton() {
 }
 
 type RingRect = { top: number; left: number; width: number; height: number };
+type ArrowSide = "left" | "right" | "top" | "bottom";
+type CardPos = {
+  top: number;
+  left: number;
+  width: number;
+  arrow: { side: ArrowSide; offset: number } | null;
+};
+
+const SPOT_PAD = 8; // breathing room around the highlighted element
+const CARD_GAP = 14; // gap between the cutout and the anchored card
+const VIEW_MARGIN = 16; // minimum distance from the viewport edges
+const POLL_MS = 140;
+const POLL_MAX = 20; // ~2.8s of waiting for a target after navigation
+
+function arrowStyle(a: { side: ArrowSide; offset: number }): CSSProperties {
+  switch (a.side) {
+    case "left":
+      return { left: -6, top: a.offset - 6 };
+    case "right":
+      return { right: -6, top: a.offset - 6 };
+    case "top":
+      return { top: -6, left: a.offset - 6 };
+    case "bottom":
+      return { bottom: -6, left: a.offset - 6 };
+  }
+}
 
 export default function OnboardingTour() {
   const router = useRouter();
@@ -150,12 +182,20 @@ export default function OnboardingTour() {
   const [phase, setPhase] = useState<"closed" | "open" | "closing">("closed");
   const [step, setStep] = useState(0);
   const [ring, setRing] = useState<RingRect | null>(null);
+  const [pos, setPos] = useState<CardPos | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const storageKey = useRef(`${STORAGE_PREFIX}:anon`);
   const cardRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef<HTMLDivElement>(null);
+  // Which steps we have already auto navigated for in this tour run, so a
+  // missing target never triggers a router.push loop.
+  const navigatedSteps = useRef<Set<number>>(new Set());
 
   const open = useCallback(() => {
+    navigatedSteps.current = new Set();
     setStep(0);
     setRing(null);
+    setPos(null);
     setPhase("open");
   }, []);
 
@@ -232,15 +272,36 @@ export default function OnboardingTour() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [phase, step, close, next, back]);
 
+  // Mobile layout: card docks to the bottom but the cutout still tracks the
+  // target.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   // Spotlight: locate the step target (data-tour attributes on the chrome)
-  // and keep the ring in sync with layout changes.
+  // and keep the cutout in sync with resize, scroll and step changes. If the
+  // target is missing and the step has a route, navigate there and poll
+  // briefly for the element; if it never appears, fall back to the centered
+  // card (ring stays null).
   useEffect(() => {
     if (phase === "closed") return;
-    const target = STEPS[step].target;
+    const stepDef = STEPS[step];
+    const target = stepDef.target;
+    if (!target) {
+      setRing(null);
+      return;
+    }
+
     const measure = () => {
-      if (!target) return setRing(null);
       const el = document.querySelector(`[data-tour="${target}"]`);
-      if (!el) return setRing(null);
+      if (!el) {
+        setRing(null);
+        return false;
+      }
       const r = el.getBoundingClientRect();
       const visible =
         r.width > 4 &&
@@ -249,16 +310,142 @@ export default function OnboardingTour() {
         r.top >= 0 &&
         r.right <= window.innerWidth &&
         r.bottom <= window.innerHeight;
-      if (!visible) return setRing(null);
-      setRing({ top: r.top - 6, left: r.left - 6, width: r.width + 12, height: r.height + 12 });
+      if (!visible) {
+        setRing(null);
+        return false;
+      }
+      const nextRing: RingRect = {
+        top: r.top - SPOT_PAD,
+        left: r.left - SPOT_PAD,
+        width: r.width + 2 * SPOT_PAD,
+        height: r.height + 2 * SPOT_PAD,
+      };
+      setRing((prev) =>
+        prev &&
+        prev.top === nextRing.top &&
+        prev.left === nextRing.left &&
+        prev.width === nextRing.width &&
+        prev.height === nextRing.height
+          ? prev
+          : nextRing
+      );
+      return true;
     };
-    const t = window.setTimeout(measure, 80);
-    window.addEventListener("resize", measure);
+
+    let tries = 0;
+    let interval: number | undefined;
+    const kickoff = () => {
+      if (measure()) return;
+      // Target not on screen: prefer navigating to the step's page, then keep
+      // polling briefly for the element to mount.
+      if (stepDef.href && pathname !== stepDef.href && !navigatedSteps.current.has(step)) {
+        navigatedSteps.current.add(step);
+        router.push(stepDef.href);
+      }
+      interval = window.setInterval(() => {
+        tries += 1;
+        if (measure() || tries >= POLL_MAX) {
+          window.clearInterval(interval);
+          interval = undefined;
+        }
+      }, POLL_MS);
+    };
+
+    const t = window.setTimeout(kickoff, 60);
+    const onMove = () => measure();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener("resize", measure);
+      if (interval) window.clearInterval(interval);
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
     };
-  }, [phase, step, pathname]);
+  }, [phase, step, pathname, router]);
+
+  // Card anchoring: place the card next to the cutout (prefer the side with
+  // room: right of sidebar items, below topbar items) and keep it fully
+  // inside the viewport with 16px margins. Runs before paint so the card
+  // never flashes at a stale position.
+  const computePos = useCallback(() => {
+    const el = posRef.current;
+    if (!el) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+    const measureH = (w: number) => {
+      el.style.width = `${w}px`;
+      return el.offsetHeight;
+    };
+    const centered = (): CardPos => {
+      const w = Math.min(430, vw - 2 * VIEW_MARGIN);
+      const h = measureH(w);
+      return {
+        top: Math.max(VIEW_MARGIN, (vh - h) / 2),
+        left: Math.max(VIEW_MARGIN, (vw - w) / 2),
+        width: w,
+        arrow: null,
+      };
+    };
+
+    if (isMobile) {
+      const w = vw - 24;
+      const h = measureH(w);
+      setPos({ top: Math.max(12, vh - h - 12), left: 12, width: w, arrow: null });
+      return;
+    }
+    if (!ring) {
+      setPos(centered());
+      return;
+    }
+
+    const w = Math.min(360, vw - 2 * VIEW_MARGIN);
+    const h = measureH(w);
+    const cx = ring.left + ring.width / 2;
+    const cy = ring.top + ring.height / 2;
+
+    let top: number;
+    let left: number;
+    let side: ArrowSide;
+    if (ring.left + ring.width + CARD_GAP + w <= vw - VIEW_MARGIN) {
+      // card to the right of the target, arrow on the card's left edge
+      side = "left";
+      left = ring.left + ring.width + CARD_GAP;
+      top = clamp(cy - h / 2, VIEW_MARGIN, vh - h - VIEW_MARGIN);
+    } else if (ring.top + ring.height + CARD_GAP + h <= vh - VIEW_MARGIN) {
+      // card below the target, arrow on top
+      side = "top";
+      top = ring.top + ring.height + CARD_GAP;
+      left = clamp(cx - w / 2, VIEW_MARGIN, vw - w - VIEW_MARGIN);
+    } else if (ring.left - CARD_GAP - w >= VIEW_MARGIN) {
+      // card to the left of the target, arrow on the right edge
+      side = "right";
+      left = ring.left - CARD_GAP - w;
+      top = clamp(cy - h / 2, VIEW_MARGIN, vh - h - VIEW_MARGIN);
+    } else if (ring.top - CARD_GAP - h >= VIEW_MARGIN) {
+      // card above the target, arrow on the bottom
+      side = "bottom";
+      top = ring.top - CARD_GAP - h;
+      left = clamp(cx - w / 2, VIEW_MARGIN, vw - w - VIEW_MARGIN);
+    } else {
+      setPos(centered());
+      return;
+    }
+    const offset =
+      side === "left" || side === "right"
+        ? clamp(cy - top, 18, h - 18)
+        : clamp(cx - left, 18, w - 18);
+    setPos({ top, left, width: w, arrow: { side, offset } });
+  }, [ring, isMobile]);
+
+  useLayoutEffect(() => {
+    if (phase === "closed") return;
+    computePos();
+    window.addEventListener("resize", computePos);
+    return () => window.removeEventListener("resize", computePos);
+    // step is a dependency because the card's content (and therefore its
+    // height) changes per step even when the ring does not.
+  }, [computePos, phase, step]);
 
   useEffect(() => {
     if (phase === "open") cardRef.current?.focus();
@@ -270,6 +457,17 @@ export default function OnboardingTour() {
   const last = step === STEPS.length - 1;
   const Icon = s.icon;
 
+  // The spotlight is a rounded rect whose giant box-shadow paints the dim
+  // layer, so the cutout itself is a real transparent hole: the highlighted
+  // feature stays fully sharp and undimmed. With no visible target the hole
+  // collapses to a point at the viewport center, which reads as a full dim.
+  const spot: RingRect = ring ?? {
+    top: typeof window !== "undefined" ? window.innerHeight / 2 : 0,
+    left: typeof window !== "undefined" ? window.innerWidth / 2 : 0,
+    width: 0,
+    height: 0,
+  };
+
   return (
     <div
       className={"pai-tour" + (phase === "closing" ? " pai-tour-closing" : "")}
@@ -277,8 +475,17 @@ export default function OnboardingTour() {
       aria-modal="true"
       aria-label="PolicyAI product tour"
     >
-      <div className="pai-tour-overlay fixed inset-0 z-[90]" onClick={() => close(false)} aria-hidden />
+      {/* invisible click catcher: click anywhere outside the card to skip */}
+      <div className="fixed inset-0 z-[90]" onClick={() => close(false)} aria-hidden />
 
+      {/* spotlight cutout: dims everything except the target */}
+      <div
+        className="pai-tour-spot"
+        style={{ top: spot.top, left: spot.left, width: spot.width, height: spot.height }}
+        aria-hidden
+      />
+
+      {/* pulsing ring accent around the cutout */}
       {ring && (
         <div
           className="pai-tour-ring"
@@ -287,41 +494,51 @@ export default function OnboardingTour() {
         />
       )}
 
-      <div className="fixed inset-x-3 bottom-3 z-[100] sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[430px] sm:-translate-x-1/2 sm:-translate-y-1/2">
+      {/* card: anchored next to the target, centered without one, docked on mobile */}
+      <div
+        ref={posRef}
+        className="pai-tour-pos fixed z-[100]"
+        style={{
+          top: pos?.top,
+          left: pos?.left,
+          width: pos?.width,
+          visibility: pos ? "visible" : "hidden",
+        }}
+      >
+        {pos?.arrow && <span className="pai-tour-arrow" style={arrowStyle(pos.arrow)} aria-hidden />}
         <div
           ref={cardRef}
           tabIndex={-1}
-          className="pai-tour-card overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-[0_24px_70px_rgba(17,18,27,.38)] outline-none"
+          className="pai-tour-card relative z-[1] overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-[0_20px_60px_rgba(17,18,27,.35)] outline-none"
         >
-          {/* header: animated icon scene on the brand gradient */}
-          <div className="brand-grad relative">
-            <button
-              onClick={() => close(false)}
-              className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11.5px] font-semibold text-white/90 transition-colors hover:bg-white/25"
-            >
-              Skip tour
-              <X size={12} />
-            </button>
-            <div key={s.key} className="pai-tour-scene relative flex h-[116px] items-center justify-center overflow-hidden">
-              <span className="pai-tour-halo" aria-hidden />
-              <span className="pai-tour-halo pai-tour-halo-2" aria-hidden />
-              <div className="pai-tour-tile flex h-14 w-14 items-center justify-center rounded-2xl border border-white/25 bg-white/15 shadow-[0_10px_28px_rgba(0,0,0,.22)]">
-                <Icon size={26} className="text-white" />
-              </div>
-              <Sparkles size={13} className="pai-tour-orb pai-tour-orb-a text-white/70" aria-hidden />
-              <CheckCircle2 size={13} className="pai-tour-orb pai-tour-orb-b text-white/60" aria-hidden />
-            </div>
-          </div>
+          {/* slim brand strip instead of a tall header, so the card never
+              covers the feature it is describing */}
+          <div className="brand-grad h-1" aria-hidden />
 
-          {/* body */}
-          <div key={`body-${s.key}`} className="pai-tour-body px-5 pb-3.5 pt-4">
-            <div className="text-[10.5px] font-bold uppercase tracking-[.09em] text-[var(--muted-2)]">
-              {last ? "Tour complete" : `Step ${step + 1} of ${STEPS.length}`}
+          <div key={`body-${s.key}`} className="pai-tour-body px-5 pb-4 pt-4">
+            <div className="flex items-start gap-3">
+              <div className="brand-grad flex h-10 w-10 flex-none items-center justify-center rounded-xl shadow-[0_6px_16px_rgba(67,56,184,.35)]">
+                <Icon size={19} className="text-white" />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="text-[10.5px] font-bold uppercase tracking-[.09em] text-[var(--muted-2)]">
+                  {last ? "Tour complete" : `Step ${step + 1} of ${STEPS.length}`}
+                </div>
+                <h2 className="serif mt-0.5 text-[18px] font-medium leading-snug tracking-[-.01em] text-[var(--text)]">
+                  {s.title}
+                </h2>
+              </div>
+              <button
+                onClick={() => close(false)}
+                className="-mr-1.5 -mt-1 flex flex-none items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-[var(--muted-2)] transition-colors hover:bg-[#f2f2ef] hover:text-[var(--text-2)]"
+              >
+                Skip tour
+                <X size={11} />
+              </button>
             </div>
-            <h2 className="serif mt-1 text-[20px] font-medium leading-snug tracking-[-.01em] text-[var(--text)]">
-              {s.title}
-            </h2>
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--muted)]">{s.desc}</p>
+
+            <p className="mt-2.5 text-[13px] leading-relaxed text-[var(--muted)]">{s.desc}</p>
+
             {s.href && (
               <button
                 onClick={() => router.push(s.href!)}
@@ -334,7 +551,7 @@ export default function OnboardingTour() {
           </div>
 
           {/* footer: progress dots + navigation */}
-          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-soft)] px-5 py-3.5">
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-soft)] px-5 py-3">
             <div className="flex items-center gap-1.5">
               {STEPS.map((st, i) => (
                 <button
@@ -342,8 +559,12 @@ export default function OnboardingTour() {
                   onClick={() => setStep(i)}
                   aria-label={`Go to step ${i + 1}`}
                   className={
-                    "h-1.5 rounded-full transition-all " +
-                    (i === step ? "w-5 bg-[var(--brand)]" : "w-1.5 bg-[#DDDBEA] hover:bg-[#C6C2E0]")
+                    "h-1.5 rounded-full transition-all duration-300 " +
+                    (i === step
+                      ? "w-5 bg-[var(--brand)]"
+                      : i < step
+                        ? "w-1.5 bg-[#B7B1DF] hover:bg-[#C6C2E0]"
+                        : "w-1.5 bg-[#DDDBEA] hover:bg-[#C6C2E0]")
                   }
                 />
               ))}
@@ -370,65 +591,59 @@ export default function OnboardingTour() {
       </div>
 
       <style jsx global>{`
-        .pai-tour-overlay {
-          background: rgba(16, 17, 26, 0.44);
-          backdrop-filter: blur(3px);
-          -webkit-backdrop-filter: blur(3px);
+        .pai-tour-spot {
+          position: fixed;
+          z-index: 91;
+          pointer-events: none;
+          border-radius: 14px;
+          box-shadow: 0 0 0 200vmax rgba(16, 17, 26, 0.55);
+          transition:
+            top 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            left 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            width 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            height 0.3s cubic-bezier(0.22, 0.9, 0.26, 1);
           animation: paiTourFade 0.28s ease both;
         }
-        .pai-tour-card {
-          animation: paiTourPop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+        .pai-tour-ring {
+          position: fixed;
+          z-index: 92;
+          pointer-events: none;
+          border-radius: 14px;
+          border: 2px solid rgba(255, 255, 255, 0.9);
+          transition:
+            top 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            left 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            width 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            height 0.3s cubic-bezier(0.22, 0.9, 0.26, 1);
+          animation: paiTourPulse 1.8s ease-in-out infinite;
         }
-        .pai-tour-closing .pai-tour-overlay {
+        .pai-tour-pos {
+          transition:
+            top 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            left 0.3s cubic-bezier(0.22, 0.9, 0.26, 1),
+            width 0.3s cubic-bezier(0.22, 0.9, 0.26, 1);
+        }
+        .pai-tour-arrow {
+          position: absolute;
+          z-index: 0;
+          width: 12px;
+          height: 12px;
+          background: #fff;
+          border: 1px solid var(--border);
+          transform: rotate(45deg);
+        }
+        .pai-tour-card {
+          animation: paiTourPop 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+        }
+        .pai-tour-body {
+          animation: paiTourStep 0.3s ease both;
+        }
+        .pai-tour-closing .pai-tour-spot,
+        .pai-tour-closing .pai-tour-ring {
           animation: paiTourFadeOut 0.22s ease both;
         }
         .pai-tour-closing .pai-tour-card {
           animation: paiTourPopOut 0.22s ease both;
-        }
-        .pai-tour-closing .pai-tour-ring {
-          animation: paiTourFadeOut 0.22s ease both;
-        }
-        .pai-tour-body,
-        .pai-tour-scene {
-          animation: paiTourStep 0.3s ease both;
-        }
-        .pai-tour-ring {
-          position: fixed;
-          z-index: 95;
-          pointer-events: none;
-          border-radius: 14px;
-          border: 2px solid rgba(255, 255, 255, 0.9);
-          background: radial-gradient(closest-side, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
-          transition: top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease;
-          animation: paiTourPulse 1.8s ease-in-out infinite;
-        }
-        .pai-tour-tile {
-          animation: paiTourFloat 3.2s ease-in-out infinite;
-        }
-        .pai-tour-halo {
-          position: absolute;
-          width: 84px;
-          height: 84px;
-          border-radius: 9999px;
-          border: 1.5px solid rgba(255, 255, 255, 0.35);
-          animation: paiTourHalo 2.6s ease-out infinite;
-        }
-        .pai-tour-halo-2 {
-          animation-delay: 1.3s;
-        }
-        .pai-tour-orb {
-          position: absolute;
-          animation: paiTourFloat 2.6s ease-in-out infinite;
-        }
-        .pai-tour-orb-a {
-          left: 27%;
-          top: 27%;
-          animation-delay: 0.3s;
-        }
-        .pai-tour-orb-b {
-          right: 26%;
-          bottom: 24%;
-          animation-delay: 1.1s;
         }
         @keyframes paiTourFade {
           from { opacity: 0; }
@@ -439,7 +654,7 @@ export default function OnboardingTour() {
           to { opacity: 0; }
         }
         @keyframes paiTourPop {
-          from { opacity: 0; transform: translateY(14px) scale(0.96); }
+          from { opacity: 0; transform: translateY(12px) scale(0.96); }
           to { opacity: 1; transform: none; }
         }
         @keyframes paiTourPopOut {
@@ -450,27 +665,17 @@ export default function OnboardingTour() {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: none; }
         }
-        @keyframes paiTourFloat {
-          0%, 100% { transform: translateY(2px); }
-          50% { transform: translateY(-4px); }
-        }
-        @keyframes paiTourHalo {
-          from { transform: scale(0.7); opacity: 0.9; }
-          to { transform: scale(1.9); opacity: 0; }
-        }
         @keyframes paiTourPulse {
           0%, 100% { box-shadow: 0 0 0 5px rgba(91, 79, 214, 0.4), 0 0 30px 6px rgba(91, 79, 214, 0.45); }
           50% { box-shadow: 0 0 0 9px rgba(91, 79, 214, 0.18), 0 0 38px 10px rgba(91, 79, 214, 0.3); }
         }
         @media (prefers-reduced-motion: reduce) {
-          .pai-tour-overlay,
+          .pai-tour-spot,
+          .pai-tour-ring,
+          .pai-tour-pos,
+          .pai-tour-arrow,
           .pai-tour-card,
-          .pai-tour-body,
-          .pai-tour-scene,
-          .pai-tour-tile,
-          .pai-tour-halo,
-          .pai-tour-orb,
-          .pai-tour-ring {
+          .pai-tour-body {
             animation: none !important;
             transition: none !important;
           }
