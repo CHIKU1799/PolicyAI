@@ -5,7 +5,7 @@ endif
 
 .PHONY: help install test lint format db-up db-down db-reset db-migrate db-seed \
         dev-api dev-web crawl eval eval-offline eval-baseline ingest backfill \
-        export-graph backup llm-groq llm-cerebras llm-gemini llm-mistral llm-openrouter llm-claude llm-status \
+        export-graph backup llm-groq llm-cerebras llm-gemini llm-mistral llm-openrouter llm-glm llm-kimi llm-claude llm-status \
         docker-up docker-down docker-logs docker-crawl
 
 help:
@@ -129,6 +129,12 @@ llm-mistral:
 
 llm-openrouter:
 	bash scripts/llm_switch.sh openrouter
+
+llm-glm:
+	bash scripts/llm_switch.sh glm
+
+llm-kimi:
+	bash scripts/llm_switch.sh kimi
 
 llm-claude:
 	bash scripts/llm_switch.sh claude

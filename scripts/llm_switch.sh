@@ -85,6 +85,16 @@ case "$MODE" in
   openrouter)
     use_openai_compatible OpenRouter "https://openrouter.ai/api/v1" "meta-llama/llama-3.3-70b-instruct:free" OPENROUTER_API_KEY "https://openrouter.ai/keys" 0
     ;;
+  glm)
+    # Zhipu GLM-5.2: open-weight (MIT), near-frontier quality, ~$1.40/$4.40 per
+    # 1M tokens. Cheapest strong option for bulk extraction + mapping.
+    use_openai_compatible GLM "https://api.z.ai/api/openai/v1" "glm-5.2" ZHIPU_API_KEY "https://z.ai/model-api" 0
+    ;;
+  kimi)
+    # Moonshot Kimi K2.5: strong agentic open model, ~$0.60/$3.00 per 1M tokens.
+    # If the model id 404s, list current ids: curl -s https://api.moonshot.ai/v1/models -H "Authorization: Bearer $MOONSHOT_API_KEY"
+    use_openai_compatible Kimi "https://api.moonshot.ai/v1" "kimi-k2.5" MOONSHOT_API_KEY "https://platform.moonshot.ai" 0
+    ;;
   claude)
     set_kv LLM_PROVIDER anthropic
     echo "LLM provider -> Claude (extraction=sonnet, mapping=opus). Restart the worker: make dev-api"
@@ -100,8 +110,8 @@ case "$MODE" in
     else
       grep -qE "^ANTHROPIC_API_KEY=.+" "$ENV_FILE" && echo "  api_key   = set" || echo "  api_key   = MISSING"
     fi
-    echo "  key slots : groq=$( [ -n "$(get_kv GROQ_API_KEY)" ] && echo set || echo - ) cerebras=$( [ -n "$(get_kv CEREBRAS_API_KEY)" ] && echo set || echo - ) gemini=$( [ -n "$(get_kv GEMINI_API_KEY)" ] && echo set || echo - ) mistral=$( [ -n "$(get_kv MISTRAL_API_KEY)" ] && echo set || echo - ) openrouter=$( [ -n "$(get_kv OPENROUTER_API_KEY)" ] && echo set || echo - )"
+    echo "  key slots : groq=$( [ -n "$(get_kv GROQ_API_KEY)" ] && echo set || echo - ) cerebras=$( [ -n "$(get_kv CEREBRAS_API_KEY)" ] && echo set || echo - ) gemini=$( [ -n "$(get_kv GEMINI_API_KEY)" ] && echo set || echo - ) mistral=$( [ -n "$(get_kv MISTRAL_API_KEY)" ] && echo set || echo - ) openrouter=$( [ -n "$(get_kv OPENROUTER_API_KEY)" ] && echo set || echo - ) glm=$( [ -n "$(get_kv ZHIPU_API_KEY)" ] && echo set || echo - ) kimi=$( [ -n "$(get_kv MOONSHOT_API_KEY)" ] && echo set || echo - )"
     ;;
   *)
-    echo "usage: llm_switch.sh {claude|groq|cerebras|gemini|mistral|openrouter|status}"; exit 1;;
+    echo "usage: llm_switch.sh {claude|groq|cerebras|gemini|mistral|openrouter|glm|kimi|status}"; exit 1;;
 esac
