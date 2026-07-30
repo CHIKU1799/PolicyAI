@@ -15,7 +15,11 @@ import {
 import { getSupabase, workerFetch } from "@/lib/supabase";
 import ScanButton from "@/components/ScanButton";
 import PostureImprovement from "@/components/insights/PostureImprovement";
-import { KpiSkeleton } from "@/components/Loading";
+import { KpiSkeleton, Shimmer } from "@/components/Loading";
+import StatCard, { type StatDelta } from "@/components/dashboard/StatCard";
+import ActivityFeed from "@/components/dashboard/ActivityFeed";
+import DeadlinesPanel from "@/components/dashboard/DeadlinesPanel";
+import SeverityBars from "@/components/dashboard/SeverityBars";
 import type { Obligation, Gap, Control, Task, Alert, Severity } from "@/lib/types";
 
 const SEV_COLOR: Record<Severity, string> = {
@@ -47,14 +51,6 @@ const SEV_TONE: Record<string, { sev: string; bg: string }> = {
   low: { sev: "#5B5E66", bg: "#EFEFEC" },
 };
 
-function spark(seed: number): string {
-  const pts = Array.from({ length: 12 }, (_, i) => {
-    const v = 17 + 9 * Math.sin(i * 0.7 + seed) + (i / 11) * 6;
-    return `${(i / 11) * 120},${34 - v}`;
-  });
-  return pts.join(" ");
-}
-
 export default function DashboardPage() {
   const [obligations, setObligations] = useState<Obligation[]>([]);
   const [gaps, setGaps] = useState<Gap[]>([]);
@@ -64,7 +60,7 @@ export default function DashboardPage() {
   const [covered, setCovered] = useState<Set<string>>(new Set());
   const [loadingData, setLoadingData] = useState(true);
   const [serverInsights, setServerInsights] = useState<ServerInsight[] | null>(null);
-  const [reqCoverage, setReqCoverage] = useState<{ pct: number | null; covered: number; applicable: number } | null>(null);
+  const [, setReqCoverage] = useState<{ pct: number | null; covered: number; applicable: number } | null>(null);
 
   useEffect(() => {
     // Canonical, server-computed insights (richer than the client fallback below):
@@ -110,13 +106,59 @@ export default function DashboardPage() {
   const openGaps = gaps.filter((g) => g.status === "open" || g.status === "remediating").length;
   const posture = Math.round(0.45 * effectivePct + 0.35 * coveragePct + 0.2 * (obligations.length ? 100 - Math.min(100, (openGaps / obligations.length) * 100) : 100)) || 0;
 
-  const kpis = [
-    { label: "Active obligations", value: obligations.filter((o) => o.status === "open").length, sub: "open & unaddressed", accent: "#4B40C4", seed: 1 },
-    { label: "Open gaps", value: openGaps, sub: "needing remediation", accent: "#D14343", seed: 3 },
-    { label: "Control effectiveness", value: `${effectivePct}%`, sub: "tested effective", accent: "#1F9D5B", seed: 2 },
-    reqCoverage?.pct != null
-      ? { label: "Requirement coverage", value: `${reqCoverage.pct}%`, sub: `${reqCoverage.covered.toLocaleString()} of ${reqCoverage.applicable.toLocaleString()} covered by policy`, accent: "#C77A1A", seed: 4 }
-      : { label: "Coverage", value: `${coveragePct}%`, sub: "obligations with a control", accent: "#C77A1A", seed: 4 },
+  // --- KPI row: real deltas from created_at / due_date windows. Where a
+  // delta is not computable from stored history, the chip is omitted.
+  const iso7dAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+  const iso14dAgo = new Date(Date.now() - 14 * 864e5).toISOString();
+  const in7d = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const in30d = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+
+  const openObligations = obligations.filter((o) => o.status === "open").length;
+  const newObligations7d = obligations.filter((o) => o.created_at >= iso7dAgo).length;
+  const newGaps7d = gaps.filter((g) => g.created_at >= iso7dAgo).length;
+  const newGapsPrev7d = gaps.filter((g) => g.created_at >= iso14dAgo && g.created_at < iso7dAgo).length;
+  const gapWeekDiff = newGaps7d - newGapsPrev7d;
+  const upcomingTasks = tasks
+    .filter((t) => t.status !== "done" && t.due_date && t.due_date >= today && t.due_date <= in30d)
+    .sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+  const dueThisWeek = upcomingTasks.filter((t) => t.due_date! <= in7d).length;
+
+  const gapDelta: StatDelta | undefined =
+    newGaps7d === 0 && newGapsPrev7d === 0
+      ? undefined
+      : gapWeekDiff > 0
+        ? { text: `+${gapWeekDiff} vs prior wk`, tone: "negative" }
+        : gapWeekDiff < 0
+          ? { text: `${gapWeekDiff} vs prior wk`, tone: "positive" }
+          : { text: "same as prior wk", tone: "neutral" };
+
+  const kpis: { label: string; value: React.ReactNode; hint: string; delta?: StatDelta }[] = [
+    {
+      // No stored posture history, so no honest week-over-week delta here.
+      label: "Compliance score",
+      value: posture,
+      hint: `${effectivePct}% controls effective · ${coveragePct}% coverage`,
+    },
+    {
+      label: "Open obligations",
+      value: openObligations,
+      hint: "open & unaddressed",
+      delta: newObligations7d > 0 ? { text: `+${newObligations7d} in 7d`, tone: "negative" } : undefined,
+    },
+    {
+      label: "New gaps (7d)",
+      value: newGaps7d,
+      hint: `${openGaps} open overall`,
+      delta: gapDelta,
+    },
+    {
+      label: "Deadlines (30d)",
+      value: upcomingTasks.length,
+      hint: upcomingTasks[0]
+        ? `Next: ${upcomingTasks[0].title.slice(0, 40)}${upcomingTasks[0].title.length > 40 ? "…" : ""}, ${new Date(`${upcomingTasks[0].due_date}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`
+        : "no task deadlines in the next 30 days",
+      delta: dueThisWeek > 0 ? { text: `${dueThisWeek} this week`, tone: "warn" } : undefined,
+    },
   ];
 
   const insights = [
@@ -138,9 +180,12 @@ export default function DashboardPage() {
         }))
       : insights.map((i) => ({ label: i.label, count: i.count, href: i.href, sev: i.sev, bg: i.bg }));
 
-  const sevCounts = (["critical", "high", "medium", "low", "informational"] as Severity[])
-    .map((s) => ({ s, n: obligations.filter((o) => o.severity === s).length }))
-    .filter((x) => x.n > 0);
+  const activeGaps = gaps.filter((g) => g.status === "open" || g.status === "remediating");
+  const gapSeverityBars = (["critical", "high", "medium", "low", "informational"] as Severity[]).map((s) => ({
+    label: s,
+    count: activeGaps.filter((g) => g.severity === s).length,
+    color: SEV_COLOR[s],
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -179,7 +224,7 @@ export default function DashboardPage() {
         </div>
 
         {/* AI briefing */}
-        <div className="card flex flex-col p-5">
+        <div className="card flex flex-col p-5 shadow-[0_1px_2px_rgba(17,18,27,.04)]">
           <div className="flex items-center gap-2.5">
             <span className="brand-grad flex h-6 w-6 items-center justify-center rounded-[7px]">
               <Sparkles size={13} className="text-white" />
@@ -191,7 +236,7 @@ export default function DashboardPage() {
           </div>
           <div className="my-3 text-[13.5px] leading-relaxed text-[var(--text-2)]">
             Posture is <b className="text-[var(--text)]">{posture >= 75 ? "strong" : "developing"}</b>:{" "}
-            <b className="text-[var(--text)]">{obligations.filter((o) => o.status === "open").length} active obligations</b>{" "}
+            <b className="text-[var(--text)]">{openObligations} active obligations</b>{" "}
             mapped, {openGaps} open {openGaps === 1 ? "gap" : "gaps"} to remediate, and{" "}
             {controls.filter((c) => c.effectiveness === "untested").length} controls still untested.
           </div>
@@ -216,20 +261,11 @@ export default function DashboardPage() {
       {loadingData ? (
         <KpiSkeleton />
       ) : (
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {kpis.map((k) => (
-          <div key={k.label} className="card overflow-hidden px-4 pt-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-[#8B8E95]">{k.label}</span>
-            </div>
-            <div className="mt-2 text-[30px] font-extrabold tracking-[-.025em] tabular-nums">{k.value}</div>
-            <div className="mb-3 mt-0.5 text-[12px] text-[var(--muted-2)]">{k.sub}</div>
-            <svg viewBox="0 0 120 34" preserveAspectRatio="none" className="-mx-4 block h-[30px] w-[calc(100%+32px)]">
-              <polyline points={spark(k.seed)} fill="none" stroke={k.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
-            </svg>
-          </div>
-        ))}
-      </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {kpis.map((k) => (
+            <StatCard key={k.label} label={k.label} value={k.value} hint={k.hint} delta={k.delta} />
+          ))}
+        </div>
       )}
 
       {/* posture improvement: version-over-version progress */}
@@ -237,11 +273,14 @@ export default function DashboardPage() {
 
       {/* main grid */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">
-        {/* horizon feed */}
-        <div className="card">
-          <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-5 py-4">
+        {/* latest regulatory activity */}
+        <div className="card overflow-hidden shadow-[0_1px_2px_rgba(17,18,27,.04)]">
+          <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-5 py-3.5">
             <div className="flex items-center gap-2.5">
-              <span className="serif text-[15.5px] font-medium">Horizon: latest alerts</span>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[.09em] text-[#aeaeb4]">Horizon</div>
+                <div className="text-[13.5px] font-bold">Latest regulatory activity</div>
+              </div>
               <span className="flex items-center gap-1.5 rounded-full bg-[#E6F4EC] px-2 py-0.5 text-[11px] font-semibold text-[var(--success)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" style={{ animation: "paiPulse 1.6s infinite" }} />
                 Live
@@ -249,73 +288,55 @@ export default function DashboardPage() {
             </div>
             <ScanButton />
           </div>
-          <div>
-            {alerts.length === 0 && (
-              <div className="px-5 py-10 text-center text-[13px] text-[var(--muted)]">
-                No alerts yet, run a scan to ingest the latest regulations.
-              </div>
-            )}
-            {alerts.map((a) => (
-              <div key={a.id} className="flex gap-3.5 border-b border-[var(--hairline)] px-5 py-3.5 last:border-0">
-                <div className="mono flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[10px] border border-[#EAEAE6] bg-[#F4F4F1] text-[10.5px] font-extrabold text-[var(--brand)]">
-                  {a.kind === "new_obligation" ? "OBL" : a.message.match(/RBI|SEBI|IRDAI|MCA/)?.[0] ?? "REG"}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-2">
-                    <span className="mono text-[11.5px] text-[var(--muted-3)]">{a.kind.replace(/_/g, " ")}</span>
-                    <span className="ml-auto text-[11.5px] text-[var(--muted-3)]">
-                      {new Date(a.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div className="text-[13.5px] font-semibold leading-snug text-[#1F2127]">{a.message}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <ActivityFeed alerts={alerts} loading={loadingData} />
         </div>
 
         {/* right column */}
         <div className="flex flex-col gap-4">
-          <div className="card p-5">
-            <div className="serif mb-3.5 text-[15.5px] font-medium">Obligations by status</div>
-            <div className="mb-3.5 flex h-2.5 overflow-hidden rounded-md">
-              {STATUS.map((s) => {
-                const n = obligations.filter((o) => o.status === s.key).length;
-                const pct = obligations.length ? (n / obligations.length) * 100 : 0;
-                return pct > 0 ? <div key={s.key} style={{ width: `${pct}%`, background: s.color }} /> : null;
-              })}
-            </div>
-            {STATUS.map((s) => (
-              <div key={s.key} className="flex items-center gap-2.5 py-1">
-                <span className="h-2.5 w-2.5 flex-none rounded-[3px]" style={{ background: s.color }} />
-                <span className="flex-1 text-[13px] text-[var(--text-2)]">{s.label}</span>
-                <span className="text-[13px] font-bold tabular-nums">{obligations.filter((o) => o.status === s.key).length}</span>
-              </div>
-            ))}
-          </div>
+          <DeadlinesPanel tasks={tasks} loading={loadingData} />
 
-          <div className="card p-5">
-            <div className="serif mb-3.5 text-[15.5px] font-medium">Obligations by severity</div>
-            {sevCounts.length === 0 && <div className="text-[13px] text-[var(--muted)]">No obligations yet.</div>}
-            {sevCounts.map(({ s, n }) => {
-              const pct = obligations.length ? (n / obligations.length) * 100 : 0;
-              return (
-                <div key={s} className="mb-3 last:mb-0">
-                  <div className="mb-1.5 flex justify-between">
-                    <span className="text-[12.5px] font-medium capitalize text-[var(--text-2)]">{s}</span>
-                    <span className="text-[12.5px] font-bold tabular-nums" style={{ color: SEV_COLOR[s] }}>{n}</span>
-                  </div>
-                  <div className="h-[7px] overflow-hidden rounded-md bg-[var(--border-soft)]">
-                    <div className="h-full rounded-md" style={{ width: `${pct}%`, background: SEV_COLOR[s] }} />
-                  </div>
+          <SeverityBars
+            kicker="Remediation"
+            title="Gaps by severity"
+            items={gapSeverityBars}
+            emptyText="No open gaps, nothing to remediate."
+            loading={loadingData}
+          />
+
+          <div className="card p-5 shadow-[0_1px_2px_rgba(17,18,27,.04)]">
+            <div className="text-[10px] font-bold uppercase tracking-[.09em] text-[#aeaeb4]">Pipeline</div>
+            <div className="mb-3 mt-0.5 text-[13.5px] font-bold">Obligations by status</div>
+            {loadingData ? (
+              <>
+                <Shimmer className="mb-3.5 h-2.5 w-full" />
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Shimmer key={i} className="mb-2 h-3.5 w-full last:mb-0" />
+                ))}
+              </>
+            ) : (
+              <>
+                <div className="mb-3.5 flex h-2.5 overflow-hidden rounded-md">
+                  {STATUS.map((s) => {
+                    const n = obligations.filter((o) => o.status === s.key).length;
+                    const pct = obligations.length ? (n / obligations.length) * 100 : 0;
+                    return pct > 0 ? <div key={s.key} style={{ width: `${pct}%`, background: s.color }} /> : null;
+                  })}
                 </div>
-              );
-            })}
+                {STATUS.map((s) => (
+                  <div key={s.key} className="flex items-center gap-2.5 py-1">
+                    <span className="h-2.5 w-2.5 flex-none rounded-[3px]" style={{ background: s.color }} />
+                    <span className="flex-1 text-[13px] text-[var(--text-2)]">{s.label}</span>
+                    <span className="text-[13px] font-bold tabular-nums">{obligations.filter((o) => o.status === s.key).length}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
 
-          <div className="card p-5">
-            <div className="serif mb-1 text-[15.5px] font-medium">Recently superseded</div>
-            <div className="mb-3.5 text-[12px] text-[var(--muted-2)]">
+          <div className="card p-5 shadow-[0_1px_2px_rgba(17,18,27,.04)]">
+            <div className="text-[10px] font-bold uppercase tracking-[.09em] text-[#aeaeb4]">Bitemporal</div>
+            <div className="mb-1 mt-0.5 text-[13.5px] font-bold">Recently superseded</div>
+            <div className="mb-3 text-[12px] text-[var(--muted-2)]">
               Obligations retired when their source regulation was replaced.
             </div>
             {(() => {
