@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { LogoMark } from "@/components/Logo";
 
 export const NAV: {
   label: string;

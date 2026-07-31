@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ScanLine } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { ButtonSpinner } from "@/components/Loading";
+import { LogoMark } from "@/components/Logo";
 
 /** The features cycled by the animated showcase panel. */
 const FEATURES = [

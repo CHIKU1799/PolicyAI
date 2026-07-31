@@ -2,6 +2,7 @@ import Link from "next/link";
 import MarketingShell from "@/components/marketing/Shell";
 import DashboardMock, { sparkPath } from "@/components/marketing/DashboardMock";
 import GraphBand from "@/components/marketing/GraphBand";
+import { AmbientDepth, Reveal } from "@/components/marketing/PaiMotion";
 
 // Public marketing landing page. The product lives behind /login -> /dashboard.
 
@@ -50,9 +51,10 @@ const CITATIONS = ["RBI/2025-26/14 ¶12", "POL-04 §2.1", "OBL-1044"];
 export default function Home() {
   return (
     <MarketingShell>
-      <main className="mx-auto flex max-w-[1304px] flex-col gap-20 px-5 pb-24 pt-12 md:gap-[104px] md:px-8 md:pt-16">
+      <main className="relative mx-auto flex max-w-[1304px] flex-col gap-20 px-5 pb-24 pt-12 md:gap-[104px] md:px-8 md:pt-16">
+        <AmbientDepth />
         {/* Hero */}
-        <section className="anim-rise flex flex-col items-center gap-6 text-center md:gap-[26px]">
+        <section className="anim-rise relative z-10 flex flex-col items-center gap-6 text-center md:gap-[26px]">
           <span className="mono text-[11px] font-semibold tracking-[.18em]" style={{ color: "#71757E" }}>
             REGULATORY INTELLIGENCE FOR INDIAN BFSI
           </span>
@@ -86,10 +88,12 @@ export default function Home() {
         </section>
 
         {/* Product mock */}
-        <DashboardMock />
+        <Reveal className="relative z-10">
+          <DashboardMock />
+        </Reveal>
 
         {/* Knowledge graph band */}
-        <section id="graph" className="flex scroll-mt-24 flex-col gap-[22px]">
+        <section id="graph" className="relative z-10 flex scroll-mt-24 flex-col gap-[22px]">
           <div className="flex flex-wrap items-end gap-7">
             <div className="min-w-[280px] flex-1 sm:min-w-[340px]">
               <span className="mono text-[11px] font-semibold tracking-[.18em]" style={{ color: "#71757E" }}>
@@ -113,7 +117,7 @@ export default function Home() {
         </section>
 
         {/* Modules */}
-        <section id="modules" className="flex flex-col gap-[26px]">
+        <section id="modules" className="relative z-10 flex flex-col gap-[26px]">
           <div className="flex flex-wrap items-end gap-7">
             <h2 className="serif m-0 min-w-[280px] flex-1 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] sm:min-w-[320px] md:text-[42px]">
               One connected system, end to end
@@ -154,7 +158,7 @@ export default function Home() {
         </section>
 
         {/* Ask PolicyAI + Controls & Tasks */}
-        <section className="grid gap-5 lg:grid-cols-2">
+        <section className="relative z-10 grid gap-5 lg:grid-cols-2">
           <div className="flex flex-col gap-4 rounded-[20px] border bg-white p-6 md:p-[26px]" style={{ borderColor: "#EAE9E5" }}>
             <div>
               <span className="mono text-[10.5px] font-semibold tracking-[.16em]" style={{ color: "#71757E" }}>
@@ -225,6 +229,7 @@ export default function Home() {
         </section>
 
         {/* CTA band */}
+        <Reveal className="relative z-10">
         <section
           className="flex flex-wrap items-center gap-10 rounded-3xl p-8 sm:p-12 md:p-14"
           style={{ background: "#15161B", color: "#F5F4F2" }}
@@ -255,6 +260,7 @@ export default function Home() {
             </Link>
           </div>
         </section>
+        </Reveal>
       </main>
     </MarketingShell>
   );

@@ -21,6 +21,7 @@ import {
   Users,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { LogoMark } from "@/components/Logo";
 import { useOrgRole } from "@/lib/useOrgRole";
 
 const MONITOR = [
