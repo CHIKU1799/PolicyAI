@@ -50,11 +50,13 @@ const ACTS = ["RBI Act, 1934", "SEBI Act, 1992", "PMLA, 2002", "IT Act, 2000", "
 const ENTITIES = [
   "NBFC-MFI", "Payment Aggregator", "AIF Cat-II", "Portfolio Manager", "Life Insurer", "Scheduled Bank",
   "Lending Service Provider", "ARC", "Housing Finance Co", "Stock Broker", "Small Finance Bank", "Payment Bank",
+  "Urban Co-op Bank", "Mutual Fund AMC", "Depository Participant", "Credit Bureau", "PPI Issuer", "Insurance Broker",
 ];
 const TOPICS = [
   "KYC / CDD", "Digital Lending", "Outsourcing", "Cyber Resilience", "Grievance Redressal", "Fair Practices",
   "Data Localisation", "Capital Adequacy", "AML / CFT", "Governance", "Disclosure", "Third-party Risk",
-  "Fraud Reporting", "Co-lending", "Default Loss Guarantee",
+  "Fraud Reporting", "Co-lending", "Default Loss Guarantee", "Related Party Transactions", "Stress Testing",
+  "Product Governance", "Customer Onboarding", "Recovery Agents",
 ];
 const DOCKINDS = ["Master Direction", "Circular", "Notification", "Guidelines", "Consultation Paper", "FAQ"];
 
@@ -65,7 +67,7 @@ function buildGraph(density: number): Graph {
   const add = (type: NodeType, label: string, props?: Record<string, string | number>): GNode => {
     const n: GNode = {
       id: String(nodes.length), type, label, props: props || {},
-      x: (r() - 0.5) * 900, y: (r() - 0.5) * 620, vx: 0, vy: 0, deg: 0,
+      x: (r() - 0.5) * 1300, y: (r() - 0.5) * 720, vx: 0, vy: 0, deg: 0,
     };
     nodes.push(n);
     return n;
@@ -103,6 +105,10 @@ function buildGraph(density: number): Graph {
     if (r() > 0.55) link(node, pick(acts), "derives_from");
     if (r() > 0.72 && regulations.length > 4)
       link(node, regulations[Math.floor(r() * (regulations.length - 1))], r() > 0.5 ? "amends" : "supersedes");
+    // Cross-cluster references: regulations routinely cite each other across
+    // regulators, which is what makes the field read as one connected web.
+    if (r() > 0.35 && regulations.length > 2)
+      link(node, regulations[Math.floor(r() * (regulations.length - 1))], "references");
   }
   for (let i = 0; i < Math.round(density * 0.11); i++) {
     const target = pick(regulations);
@@ -112,8 +118,16 @@ function buildGraph(density: number): Graph {
     });
     link(d, target, "deadline_for");
   }
-  for (const e of ents) for (const rg of regs) if (r() > 0.66) link(e, rg, "supervised_by");
+  for (const e of ents) for (const rg of regs) if (r() > 0.6) link(e, rg, "supervised_by");
   for (const t of tops) if (r() > 0.5) link(t, pick(acts), "grounded_in");
+  // Lateral ties between the thematic and entity layers keep the mid-field
+  // connected instead of leaving isolated spokes around each hub.
+  for (let i = 0; i < tops.length; i++)
+    link(tops[i], tops[(i + 1 + Math.floor(r() * (tops.length - 2))) % tops.length], "related_to");
+  for (const e of ents) {
+    const m = 1 + Math.floor(r() * 2);
+    for (let k = 0; k < m; k++) link(e, pick(tops), "exposed_to");
+  }
   return { nodes, links };
 }
 
@@ -123,7 +137,7 @@ type Settings = {
   off: Partial<Record<NodeType, boolean>>;
 };
 
-const PRESETS = ["NBFC-MFI", "Payment Aggregator", "AIF Cat-II", "Digital Lending", "KYC / CDD", "RBI"];
+const PRESETS = ["RBI", "SEBI", "IRDAI", "NBFC-MFI", "Payment Aggregator", "Digital Lending", "KYC / CDD"];
 
 const GRAPH_STATS = [
   { value: "780+", label: "regulations tracked" },
@@ -134,8 +148,8 @@ const GRAPH_STATS = [
 
 export default function GraphBand() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const graph = useMemo(() => buildGraph(160), []);
-  const [center, setCenter] = useState("NBFC-MFI");
+  const graph = useMemo(() => buildGraph(340), []);
+  const [center, setCenter] = useState("RBI");
   const [hops, setHops] = useState(2);
   const [off, setOff] = useState<Partial<Record<NodeType, boolean>>>({});
   const [selected, setSelected] = useState<GNode | null>(null);
@@ -169,12 +183,55 @@ export default function GraphBand() {
       adj.get(l.s)!.add(l.t);
       adj.get(l.t)!.add(l.s);
     }
+    // Hub layout: regulators pinned at fixed positions spread across the full
+    // band width, everything else loosely anchored around them so the field
+    // settles into 3-4 visible clusters instead of one center blob.
+    const HUBS: Record<string, { x: number; y: number }> = {
+      RBI: { x: -640, y: -80 },
+      SEBI: { x: 40, y: 160 },
+      IRDAI: { x: 640, y: -80 },
+      MeitY: { x: -330, y: 290 },
+      PFRDA: { x: 390, y: -300 },
+      "FIU-IND": { x: -90, y: -330 },
+    };
     const anchors = new Map<string, { x: number; y: number }>();
-    const regs = graph.nodes.filter((n) => n.type === "regulator");
-    regs.forEach((n, i) => {
-      const a = (i / regs.length) * Math.PI * 2;
-      anchors.set(n.id, { x: Math.cos(a) * 300, y: Math.sin(a) * 210 });
+    const ar = rng(4127);
+    graph.nodes
+      .filter((n) => n.type === "regulator")
+      .forEach((n) => anchors.set(n.id, HUBS[n.label] ?? { x: 0, y: 0 }));
+    const entNodes = graph.nodes.filter((n) => n.type === "entity_class");
+    entNodes.forEach((n, i) => {
+      const a = (i / entNodes.length) * Math.PI * 2 + 0.35;
+      anchors.set(n.id, { x: Math.cos(a) * 680, y: Math.sin(a) * 350 });
     });
+    const topNodes = graph.nodes.filter((n) => n.type === "topic");
+    topNodes.forEach((n, i) => {
+      const a = (i / topNodes.length) * Math.PI * 2 + 1.2;
+      anchors.set(n.id, { x: Math.cos(a) * 370, y: Math.sin(a) * 220 });
+    });
+    const actNodes = graph.nodes.filter((n) => n.type === "parent_act");
+    actNodes.forEach((n, i) => {
+      const a = (i / actNodes.length) * Math.PI * 2 + 2.1;
+      anchors.set(n.id, { x: Math.cos(a) * 470, y: Math.sin(a) * 290 });
+    });
+    for (const n of graph.nodes) {
+      if (n.type !== "regulation" && n.type !== "deadline") continue;
+      const hub = HUBS[String(n.props.Regulator)] ?? { x: 0, y: 0 };
+      const spread = n.type === "regulation" ? 460 : 540;
+      anchors.set(n.id, {
+        x: hub.x + (ar() - 0.5) * spread,
+        y: hub.y + (ar() - 0.5) * spread * 0.72,
+      });
+    }
+    // Seed positions from the anchors so the starfield fills the band from the
+    // first frame and the simulation only has to relax, not migrate.
+    for (const n of graph.nodes) {
+      const a = anchors.get(n.id);
+      if (a) {
+        n.x = a.x + (ar() - 0.5) * 120;
+        n.y = a.y + (ar() - 0.5) * 120;
+      }
+    }
 
     const pointer = { x: 0, y: 0, sx: 0, sy: 0, active: false };
     const cam = { x: 0, y: 0, k: 0.72, tk: 0.72 };
@@ -182,6 +239,9 @@ export default function GraphBand() {
     let hoverId: string | null = null;
     let autoFit = true;
     let dragging = false;
+    // Simulation temperature: decays while idle so physics stops burning CPU
+    // once the field has settled; any interaction reheats it.
+    let alpha = 1;
     let dpr = 1, w = 0, h = 0;
     let raf = 0;
     const t0 = performance.now();
@@ -245,7 +305,7 @@ export default function GraphBand() {
                 d2 = 1;
               }
               if (d2 > 5200) continue;
-              const f = 190 / d2;
+              const f = 165 / d2;
               n.vx += dx * f;
               n.vy += dy * f;
             }
@@ -254,23 +314,26 @@ export default function GraphBand() {
       for (const l of graph.links) {
         const a = byId.get(l.s)!, b = byId.get(l.t)!;
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
-        const rest = l.type === "issued_by" ? 66 : l.type === "covers" ? 82 : 118;
-        const f = (d - rest) * 0.0045;
+        // Structural links (to the issuing hub, topic, entity) are short and
+        // stiff; lateral cross-cluster ties are long and soft so they weave the
+        // web without collapsing the hubs into one central ball.
+        const structural =
+          l.type === "issued_by" || l.type === "covers" || l.type === "applies_to" ||
+          l.type === "derives_from" || l.type === "deadline_for";
+        const rest = l.type === "issued_by" ? 52 : l.type === "covers" ? 64 : structural ? 96 : 190;
+        const f = (d - rest) * (structural ? 0.0042 : 0.0011);
         a.vx += dx * f;
         a.vy += dy * f;
         b.vx -= dx * f;
         b.vy -= dy * f;
       }
-      const focus = focusNode();
       for (const n of N) {
         const a = anchors.get(n.id);
-        const gx = a ? a.x : 0, gy = a ? a.y : 0;
-        const pull = a ? 0.006 : 0.0016;
-        n.vx += (gx - n.x) * pull;
-        n.vy += (gy - n.y) * pull;
-        if (focus && n === focus) {
-          n.vx += (0 - n.x) * 0.05;
-          n.vy += (0 - n.y) * 0.05;
+        if (a) {
+          const pull =
+            n.type === "regulator" ? 0.012 : n.type === "regulation" || n.type === "deadline" ? 0.0048 : 0.004;
+          n.vx += (a.x - n.x) * pull;
+          n.vy += (a.y - n.y) * pull;
         }
         if (withPointer && pointer.active) {
           const dx = n.x - pointer.x, dy = n.y - pointer.y, d2 = dx * dx + dy * dy;
@@ -285,30 +348,49 @@ export default function GraphBand() {
         n.x += Math.max(-6, Math.min(6, n.vx));
         n.y += Math.max(-6, Math.min(6, n.vy));
       }
+    };
+
+    // Camera framing lives outside the physics step so panning to a preset hub
+    // keeps working even while the simulation is asleep. The view blends the
+    // whole-field fit with the focus node so each preset visibly re-centers.
+    const updateCam = (snap = false) => {
       if (autoFit) {
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const n of N) {
-          if (n.x < x0) x0 = n.x;
-          if (n.x > x1) x1 = n.x;
-          if (n.y < y0) y0 = n.y;
-          if (n.y > y1) y1 = n.y;
+        // Trimmed bounding box (2% outliers per side) so a few stray nodes do
+        // not shrink the whole field into the middle of the band.
+        const xs = graph.nodes.map((n) => n.x).sort((a, b) => a - b);
+        const ys = graph.nodes.map((n) => n.y).sort((a, b) => a - b);
+        const lo = Math.floor(xs.length * 0.02), hi = xs.length - 1 - lo;
+        const x0 = xs[lo], x1 = xs[hi], y0 = ys[lo], y1 = ys[hi];
+        const pad = 42;
+        const fitK = Math.max(
+          0.35,
+          Math.min(2.2, Math.min((w - pad * 2) / Math.max(1, x1 - x0), (h - pad * 2) / Math.max(1, y1 - y0))),
+        );
+        const f = focusNode();
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        const tx = f ? -(cx * 0.5 + f.x * 0.5) : -cx;
+        const ty = f ? -(cy * 0.5 + f.y * 0.5) : -cy;
+        // Cap below the label-flood zoom threshold: full labels appear only on
+        // a deliberate manual scroll-zoom, never from the auto fit.
+        cam.tk = f ? Math.min(1.6, fitK * 1.12) : Math.min(1.6, fitK);
+        if (snap) {
+          cam.x = tx;
+          cam.y = ty;
+        } else {
+          cam.x += (tx - cam.x) * 0.06;
+          cam.y += (ty - cam.y) * 0.06;
         }
-        const pad = 56;
-        const k = Math.max(0.35, Math.min(2.2, Math.min((w - pad * 2) / Math.max(1, x1 - x0), (h - pad * 2) / Math.max(1, y1 - y0))));
-        cam.tk = k;
-        cam.x += (-(x0 + x1) / 2 - cam.x) * 0.08;
-        cam.y += (-(y0 + y1) / 2 - cam.y) * 0.08;
       }
-      cam.k += (cam.tk - cam.k) * 0.12;
+      cam.k = snap ? cam.tk : cam.k + (cam.tk - cam.k) * 0.12;
     };
 
     const radius = (n: GNode) =>
-      Math.min(13, 3.4 + 1.55 * Math.sqrt(n.deg || 1)) + (n.label === settingsRef.current.center ? 2.5 : 0);
+      Math.min(10.5, 2.6 + 1.15 * Math.sqrt(n.deg || 1)) + (n.label === settingsRef.current.center ? 2 : 0);
 
     const alphaFor = (n: GNode, d: Map<string, number>) => {
       if (settingsRef.current.off[n.type]) return 0.05;
       const dd = d.get(n.id);
-      if (dd == null || dd > settingsRef.current.hops) return 0.09;
+      if (dd == null || dd > settingsRef.current.hops) return 0.14;
       if (hoverId) {
         if (n.id === hoverId) return 1;
         return (adj.get(hoverId) || new Set()).has(n.id) ? 0.95 : 0.1;
@@ -347,32 +429,45 @@ export default function GraphBand() {
       const d = dist();
       const hoverSet = hoverId ? adj.get(hoverId) || new Set<string>() : null;
 
+      // World-space viewport bounds (with margin) so panned/zoomed-out content
+      // is skipped instead of drawn offscreen.
+      const invK = 1 / cam.k, vm = 90;
+      const vx0 = (-w / 2 - tilt.x) * invK - cam.x - vm, vx1 = (w / 2 - tilt.x) * invK - cam.x + vm;
+      const vy0 = (-h / 2 - tilt.y) * invK - cam.y - vm, vy1 = (h / 2 - tilt.y) * invK - cam.y + vm;
+
+      let litIdx = 0;
       for (const l of graph.links) {
         const a = byId.get(l.s)!, b = byId.get(l.t)!;
+        if (
+          (a.x < vx0 && b.x < vx0) || (a.x > vx1 && b.x > vx1) ||
+          (a.y < vy0 && b.y < vy0) || (a.y > vy1 && b.y > vy1)
+        )
+          continue;
         const lit = hoverId ? l.s === hoverId || l.t === hoverId : d.get(a.id) === 0 || d.get(b.id) === 0;
         const al = Math.min(alphaFor(a, d), alphaFor(b, d));
-        ctx.strokeStyle = lit ? "rgba(139,125,255," + (0.75 * al + 0.2) + ")" : "rgba(150,160,190," + 0.16 * al + ")";
-        ctx.lineWidth = lit ? 1.5 : 0.7;
+        ctx.strokeStyle = lit ? "rgba(139,125,255," + (0.62 * al + 0.16) + ")" : "rgba(150,160,190," + 0.11 * al + ")";
+        ctx.lineWidth = lit ? 1.3 : 0.55;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-        if (lit && !prefersReduced) {
+        if (lit && !prefersReduced && (litIdx++ & 1) === 0) {
           const p = (t * 0.45 + (a.x + b.y) * 0.004) % 1;
           ctx.fillStyle = "rgba(190,180,255,0.95)";
           ctx.beginPath();
-          ctx.arc(a.x + (b.x - a.x) * p, a.y + (b.y - a.y) * p, 1.9, 0, 6.2832);
+          ctx.arc(a.x + (b.x - a.x) * p, a.y + (b.y - a.y) * p, 1.7, 0, 6.2832);
           ctx.fill();
         }
       }
 
       const labelled: { n: GNode; r: number; al: number }[] = [];
       for (const n of graph.nodes) {
+        if (n.x < vx0 || n.x > vx1 || n.y < vy0 || n.y > vy1) continue;
         const al = alphaFor(n, d);
         const c = TYPE[n.type].color, r = radius(n);
         const isFocus = n.label === settingsRef.current.center, isHover = n.id === hoverId;
         ctx.globalAlpha = al;
-        if (isFocus || isHover || n.deg > 14) {
+        if (isFocus || isHover || n.deg > 26) {
           const pulse = prefersReduced ? 1 : 1 + Math.sin(t * 2 + n.x * 0.01) * 0.12;
           const gr = ctx.createRadialGradient(n.x, n.y, r, n.x, n.y, r * 3.1 * pulse);
           gr.addColorStop(0, c + "44");
@@ -396,7 +491,7 @@ export default function GraphBand() {
           ctx.arc(n.x, n.y, r + 3.5 / cam.k, 0, 6.2832);
           ctx.stroke();
         }
-        if (al > 0.5 && (isFocus || isHover || n.deg >= 11 || (hoverSet && hoverSet.has(n.id)) || cam.k > 1.35))
+        if (al > 0.5 && (isFocus || isHover || n.deg >= 20 || (hoverSet && hoverSet.has(n.id)) || cam.k > 1.75))
           labelled.push({ n, r, al });
         ctx.globalAlpha = 1;
       }
@@ -460,12 +555,12 @@ export default function GraphBand() {
 
     const settle = (n: number) => {
       for (let i = 0; i < n; i++) step(false);
-      cam.k = cam.tk;
+      updateCam(true);
     };
 
     const renderStatic = () => {
       resize();
-      settle(140);
+      settle(160);
       draw();
     };
 
@@ -473,6 +568,7 @@ export default function GraphBand() {
       isReduced: prefersReduced,
       refit: () => {
         autoFit = true;
+        alpha = Math.max(alpha, 0.35);
         if (prefersReduced) renderStatic();
       },
       renderStatic,
@@ -536,7 +632,12 @@ export default function GraphBand() {
       renderStatic();
     } else {
       const loop = () => {
-        step(true);
+        if (pointer.active || dragging) alpha = 1;
+        if (alpha > 0.02) {
+          step(true);
+          alpha *= 0.993;
+        }
+        updateCam();
         draw();
         raf = requestAnimationFrame(loop);
       };

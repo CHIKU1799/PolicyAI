@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
+import AskCopilotLink from "@/components/AskCopilotLink";
 import { TableSkeleton } from "@/components/Loading";
 import { PageHeader, Badge, DemoBanner, EmptyState, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
@@ -167,14 +168,20 @@ export default function ObligationsPage() {
                 return (
                   <Fragment key={o.id}>
                     <tr
-                      className="cursor-pointer hover:bg-slate-50"
+                      className="group cursor-pointer hover:bg-slate-50"
                       onClick={() => setOpen(open === o.id ? null : o.id)}
                     >
                       <td className="px-4 py-3 text-[var(--muted)]">
                         {open === o.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-800">{o.title}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-slate-800">{o.title}</span>
+                          <AskCopilotLink
+                            question={`Explain obligation '${o.title}' and what my firm must do to comply`}
+                            className="opacity-0 transition-opacity group-hover:opacity-100"
+                          />
+                        </div>
                         <div className="line-clamp-1 text-xs text-[var(--muted)]">{o.summary}</div>
                       </td>
                       <td className="px-4 py-3">
@@ -242,6 +249,10 @@ export default function ObligationsPage() {
                             {(o.status === "addressed" || o.status === "dismissed") && (
                               <TriageButton onClick={() => setStatus(o, "open")}>Reopen</TriageButton>
                             )}
+                            <AskCopilotLink
+                              question={`Explain obligation '${o.title}' and what my firm must do to comply`}
+                              className="ml-auto"
+                            />
                           </div>
                           <Detail label="Summary" value={o.summary} />
                           <Detail label="Why this applies to you" value={o.relevance_rationale} />

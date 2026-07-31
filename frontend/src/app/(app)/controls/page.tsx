@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { getSupabase } from "@/lib/supabase";
+import AskCopilotLink from "@/components/AskCopilotLink";
 import ControlMappingGuide from "@/components/insights/ControlMappingGuide";
 import { PageHeader, Kpi, Badge, DemoBanner, EmptyState } from "@/components/ui";
 import { KpiSkeleton, TableSkeleton } from "@/components/Loading";
@@ -191,11 +192,17 @@ export default function ControlsPage() {
               {controls.map((c) => {
                 const t = latestTest(c.id);
                 return (
-                  <tr key={c.id}>
+                  <tr key={c.id} className="group hover:bg-slate-50/60">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">
-                        {c.ref_code ? `${c.ref_code} · ` : ""}
-                        {c.title}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-slate-800">
+                          {c.ref_code ? `${c.ref_code} · ` : ""}
+                          {c.title}
+                        </span>
+                        <AskCopilotLink
+                          question={`Suggest a test plan for control '${c.title}'`}
+                          className="opacity-0 transition-opacity group-hover:opacity-100"
+                        />
                       </div>
                       {c.description && (
                         <div className="line-clamp-1 text-xs text-[var(--muted)]">

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Send, ExternalLink, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Send, ExternalLink, Sparkles, Gauge, BookOpenCheck, Wrench, FileSearch } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
 import ImpactAssessment from "@/components/ImpactAssessment";
 import Markdown from "@/components/Markdown";
@@ -17,11 +17,33 @@ interface Msg {
   citations?: Citation[];
 }
 
-const SUGGESTIONS = [
-  "What obligations are open and high severity?",
-  "What compliance tasks are overdue?",
-  "What changed in microfinance pricing rules?",
-  "What is our company's regulatory profile?",
+// Capability strip for the empty state: each chip names something the Copilot
+// is good at and prefills a question that shows it off.
+const CAPABILITIES = [
+  {
+    icon: Gauge,
+    title: "Posture summary",
+    question:
+      "Summarize our current compliance posture: open obligations by severity, overdue tasks, and the biggest risks.",
+  },
+  {
+    icon: BookOpenCheck,
+    title: "Explain an obligation",
+    question:
+      "Explain our highest severity open obligation and what my firm must do to comply with it.",
+  },
+  {
+    icon: Wrench,
+    title: "Close a gap",
+    question:
+      "Pick our most critical open compliance gap and give me the fastest step-by-step plan to close it.",
+  },
+  {
+    icon: FileSearch,
+    title: "Draft an impact assessment",
+    question:
+      "Draft an impact assessment for the most recent regulatory change that affects us: impacted policies, controls, and next steps.",
+  },
 ];
 
 export default function AskPage() {
@@ -29,6 +51,21 @@ export default function AskPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const autoAsked = useRef(false);
+
+  // Contextual entry points across the app link here as /ask?q=<question>;
+  // auto-submit that question exactly once, then clean the URL so a refresh
+  // does not resend it. Read from window.location instead of useSearchParams
+  // to avoid the Suspense-boundary requirement at build time.
+  useEffect(() => {
+    if (autoAsked.current) return;
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (!q || !q.trim()) return;
+    autoAsked.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    send(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Mutate only the trailing (assistant) message, the one we are streaming into.
   function updateLast(fn: (m: Msg) => Msg) {
@@ -146,17 +183,25 @@ export default function AskPage() {
         {messages.length === 0 && <ImpactAssessment />}
         {messages.length === 0 && (
           <div className="card p-6">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Sparkles size={16} className="text-[var(--brand)]" /> Try asking
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <Sparkles size={16} className="text-[var(--brand)]" /> What the Copilot can do
             </div>
+            <p className="mb-3 text-xs text-[var(--muted)]">
+              Answers are grounded in your regulations, obligations, controls, and tasks. Pick a
+              capability to see it in action, or ask anything below.
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
-              {SUGGESTIONS.map((s) => (
+              {CAPABILITIES.map((c) => (
                 <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className="rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-left text-sm text-slate-600 hover:border-[var(--brand)] hover:text-slate-900"
+                  key={c.title}
+                  onClick={() => send(c.question)}
+                  className="group rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-left transition-colors hover:border-[var(--brand)]"
                 >
-                  {s}
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-slate-700 group-hover:text-slate-900">
+                    <c.icon size={14} className="shrink-0 text-[var(--brand)]" />
+                    {c.title}
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 text-xs text-[var(--muted)]">{c.question}</div>
                 </button>
               ))}
             </div>

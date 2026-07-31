@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
+import AskCopilotLink from "@/components/AskCopilotLink";
 import { PageHeader, Badge, DemoBanner, ExportButton } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { downloadCSV } from "@/lib/export";
@@ -113,14 +114,20 @@ export default function GapsPage() {
               </div>
               <div className="flex flex-col gap-2">
                 {items.map((g) => (
-                  <div key={g.id} className="card p-3">
-                    <div className="flex items-center justify-between">
+                  <div key={g.id} className="group card p-3">
+                    <div className="flex items-center justify-between gap-2">
                       <Badge className={SEVERITY_STYLES[g.severity]}>{g.severity}</Badge>
-                      {g.due_date && (
-                        <span className="text-[11px] text-[var(--muted)]">
-                          due {new Date(g.due_date).toLocaleDateString()}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {g.due_date && (
+                          <span className="text-[11px] text-[var(--muted)]">
+                            due {new Date(g.due_date).toLocaleDateString()}
+                          </span>
+                        )}
+                        <AskCopilotLink
+                          question={`What is the fastest way to close this gap: '${(g.description ?? "").slice(0, 120)}'?`}
+                          className="opacity-0 transition-opacity group-hover:opacity-100"
+                        />
+                      </div>
                     </div>
                     <div className="mt-2 text-sm text-slate-800">{g.description}</div>
                     {g.remediation_plan && (

@@ -16,7 +16,6 @@ import {
   Sparkles,
   ChevronsUpDown,
   LogOut,
-  ShieldHalf,
   Gauge,
   Users,
 } from "lucide-react";
