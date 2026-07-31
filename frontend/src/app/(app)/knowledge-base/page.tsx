@@ -39,6 +39,8 @@ export default function KnowledgeBasePage() {
     refresh();
   }, []);
 
+  const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
+
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     const supabase = getSupabase();
@@ -46,7 +48,23 @@ export default function KnowledgeBasePage() {
     setBusy(true);
     setMsg(null);
     try {
-      const path = `${Date.now()}-${file.name}`;
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        setMsg(`Unsupported file type; allowed: ${ALLOWED_EXTENSIONS.join(", ")}.`);
+        return;
+      }
+      // Uploads live under the caller's own org folder; the worker refuses to
+      // process paths outside it, so tenants cannot point it at each other's
+      // files. RLS only ever returns the caller's own memberships here.
+      const { data: memberships } = await supabase
+        .from("memberships")
+        .select("org_id, created_at")
+        .order("created_at", { ascending: true })
+        .limit(1);
+      const orgId = memberships?.[0]?.org_id as string | undefined;
+      if (!orgId) throw new Error("no organization membership found for this account");
+      const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
+      const path = `${orgId}/${Date.now()}-${safeName}`;
       const { error } = await supabase.storage.from(KB_BUCKET).upload(path, file);
       if (error) throw error;
       const resp = await workerFetch("/documents/process", {

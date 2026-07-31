@@ -132,7 +132,44 @@ async function completeFree(system: string, user: string): Promise<LlmResult> {
   throw new Error(lastErr);
 }
 
+// Simple in-memory per-IP sliding-window rate limit (single-instance scope,
+// resets on deploy). The route requires auth anyway; this stops one client
+// burning through the free-tier LLM budget in a loop.
+const RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.ASK_RATE_LIMIT_PER_MIN) || 30);
+const RATE_WINDOW_MS = 60_000;
+const rateHits = new Map<string, number[]>();
+
+function rateLimitRetryAfter(ip: string): number {
+  const now = Date.now();
+  const hits = (rateHits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (hits.length >= RATE_LIMIT_PER_MIN) {
+    rateHits.set(ip, hits);
+    return Math.ceil((RATE_WINDOW_MS - (now - hits[0])) / 1000);
+  }
+  hits.push(now);
+  rateHits.set(ip, hits);
+  if (rateHits.size > 4096) {
+    const oldest = rateHits.keys().next().value;
+    if (oldest) rateHits.delete(oldest);
+  }
+  return 0;
+}
+
+function clientIp(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  return fwd ? fwd.split(",")[0].trim() : "unknown";
+}
+
 export async function POST(req: NextRequest) {
+  const retryAfter = rateLimitRetryAfter(clientIp(req));
+  if (retryAfter > 0) {
+    return NextResponse.json(
+      {
+        detail: `Rate limit exceeded: at most ${RATE_LIMIT_PER_MIN} requests per minute. Try again in ${retryAfter}s.`,
+      },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
+  }
   // Never let an exception escape as a Next.js HTML error page: the client
   // always expects JSON from this route.
   try {
