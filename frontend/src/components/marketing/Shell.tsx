@@ -89,7 +89,7 @@ export function MarketingNav() {
     >
       <div className="mx-auto flex h-[62px] max-w-[1304px] items-center gap-4 px-5 md:px-8 lg:gap-6">
         <Link href="/" className="flex flex-none items-center gap-[9px] no-underline">
-          <span className="h-6 w-6 rounded-lg brand-grad" aria-hidden />
+          <LogoMark size={24} />
           <span className="text-[16px] font-extrabold tracking-tight" style={{ color: "#15161B" }}>
             PolicyAI
           </span>

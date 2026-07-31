@@ -39,9 +39,7 @@ const MANAGE = [
 function Brand() {
   return (
     <div className="flex h-14 flex-none items-center gap-2.5 px-4">
-      <div className="brand-grad flex h-7 w-7 items-center justify-center rounded-lg text-white shadow-[0_2px_6px_rgba(67,56,184,.35)]">
-        <ShieldHalf size={16} />
-      </div>
+      <LogoMark size={28} className="shadow-[0_2px_6px_rgba(67,56,184,.35)] rounded-lg" />
       <span className="text-[16px] font-extrabold tracking-tight">
         Policy<span className="text-[var(--brand)]">AI</span>
       </span>

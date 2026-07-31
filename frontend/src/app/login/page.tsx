@@ -62,12 +62,7 @@ function Showcase() {
       <div className="pa-dust2" aria-hidden />
 
       <Link href="/" className="relative z-10 flex items-center gap-2 no-underline">
-        <span
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
-          style={{ background: "linear-gradient(135deg,#2E6BF7,#1746D6)" }}
-        >
-          <ScanLine size={17} />
-        </span>
+        <LogoMark size={32} />
         <span className="text-[17px] font-extrabold tracking-tight text-white">
           Policy<span style={{ color: "#7EA4FF" }}>AI</span>
         </span>
@@ -297,12 +292,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* mobile-only brand */}
           <Link href="/" className="mb-8 flex items-center gap-2 no-underline lg:hidden">
-            <span
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-white"
-              style={{ background: "linear-gradient(135deg,#2E6BF7,#1746D6)" }}
-            >
-              <ScanLine size={20} />
-            </span>
+            <LogoMark size={36} />
             <span className="text-[18px] font-extrabold tracking-tight" style={{ color: "#15254E" }}>
               Policy<span style={{ color: "#1E5EF6" }}>AI</span>
             </span>
