@@ -16,6 +16,11 @@ dependencies = [
 
 [tool.uv]
 package = false
+# rapidocr-onnxruntime declares full opencv-python, whose cv2 needs libGL at
+# import time (absent from the slim Docker image). The headless build is
+# import-compatible and GUI-free; scrapers depends on it directly, and this
+# override drops the GUI build from the resolution entirely.
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
 
 [tool.uv.workspace]
 members = ["packages/*"]

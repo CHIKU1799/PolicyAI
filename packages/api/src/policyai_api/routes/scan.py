@@ -16,6 +16,7 @@ from policyai_scrapers.runner import run_once
 from pydantic import BaseModel
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
+from policyai_api.ratelimit import rate_limited
 
 router = APIRouter(tags=["scan"])
 
@@ -25,7 +26,15 @@ class ScanResponse(BaseModel):
     detail: str
 
 
-@router.post("/scan", response_model=ScanResponse, status_code=202)
+# A scan crawls every enabled source and runs LLM extraction over the results.
+# Anonymous (demo) callers must never be able to trigger that spend, hence
+# require_auth; the limiter also stops a signed-in user hammering the button.
+@router.post(
+    "/scan",
+    response_model=ScanResponse,
+    status_code=202,
+    dependencies=[Depends(rate_limited("scan", require_auth=True))],
+)
 async def scan_now(background: BackgroundTasks) -> ScanResponse:
     background.add_task(run_once, force=True)
     return ScanResponse(
@@ -40,7 +49,12 @@ class MapRequest(BaseModel):
     limit: int = 1000
 
 
-@router.post("/map", response_model=ScanResponse, status_code=202)
+@router.post(
+    "/map",
+    response_model=ScanResponse,
+    status_code=202,
+    dependencies=[Depends(rate_limited("scan", require_auth=True))],
+)
 async def map_now(
     background: BackgroundTasks,
     req: MapRequest | None = None,

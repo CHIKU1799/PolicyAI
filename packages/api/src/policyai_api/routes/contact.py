@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.deps import get_session
+from policyai_api.ratelimit import rate_limited
 
 router = APIRouter(prefix="/contact", tags=["contact"])
 
@@ -31,7 +32,9 @@ class ContactResponse(BaseModel):
     ok: bool
 
 
-@router.post("", response_model=ContactResponse)
+# Public endpoint that stores a row and sends ops email: rate limited per IP
+# (5/min anonymous) so it cannot be used to spam the inbox or fill the table.
+@router.post("", response_model=ContactResponse, dependencies=[Depends(rate_limited("contact"))])
 async def submit_contact(
     req: ContactRequest,
     session: AsyncSession = Depends(get_session),

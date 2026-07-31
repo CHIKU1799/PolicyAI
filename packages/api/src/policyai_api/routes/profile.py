@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_llm, get_session
+from policyai_api.ratelimit import rate_limited
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -34,7 +35,13 @@ class DeriveResponse(BaseModel):
     rationale: str | None = None
 
 
-@router.post("/derive", response_model=DeriveResponse)
+# Runs the profile prompt over the org's KB corpus (LLM spend): signed-in
+# callers only, rate limited.
+@router.post(
+    "/derive",
+    response_model=DeriveResponse,
+    dependencies=[Depends(rate_limited("profile", require_auth=True))],
+)
 async def derive_profile(
     req: DeriveRequest,
     session: AsyncSession = Depends(get_session),

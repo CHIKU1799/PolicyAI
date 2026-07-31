@@ -12,6 +12,8 @@ Full text comes from the item's own page: HTML detail pages are rendered in the
 same browser context; PDF links are downloaded through the context's request
 client (sharing its cookies, so WAF-issued tokens carry over) and text-extracted
 with pypdf, mirroring how policy uploads are handled elsewhere in the platform.
+Scanned PDFs with no usable text layer fall through to RapidOCR (see ``ocr.py``),
+which is what unlocks NPCI and DGFT; ``OCR_ENABLED=0`` turns that fallback off.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import abc
 import contextlib
 import io
+import os
 import re
 from collections.abc import AsyncIterator
 from datetime import date, datetime
@@ -90,13 +93,34 @@ def parse_listing_date(value: str | None) -> date | None:
     return None
 
 
+# Below this, a "text layer" is really just page furniture (headers, page
+# numbers) or nothing at all — treat the PDF as scanned and OCR it.
+OCR_FALLBACK_CHARS = 200
+
+
 def pdf_bytes_to_text(data: bytes) -> str:
-    """Text layer of a PDF via pypdf (same approach as the policy-upload path).
-    Scanned PDFs with no text layer yield ~nothing; the caller drops empties."""
+    """Text of a PDF: the pypdf text layer (same approach as the policy-upload
+    path), falling back to OCR for scanned PDFs whose layer is empty or trivial
+    (NPCI and DGFT publish image-only scans). ``OCR_ENABLED=0`` disables the
+    fallback and restores the pypdf-only behaviour."""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
-    return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+    text = "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+    if len(text) >= OCR_FALLBACK_CHARS or os.getenv("OCR_ENABLED", "1") == "0":
+        return text
+    try:
+        from policyai_scrapers.ocr import pdf_ocr_text
+
+        ocr_text = pdf_ocr_text(data)
+    except Exception as exc:  # noqa: BLE001 - keep whatever pypdf produced
+        log.warning("pdf ocr fallback failed (%s); keeping pypdf text", exc)
+        return text
+    if len(ocr_text) > len(text):
+        log.info("pdf text via ocr fallback (pypdf %d chars, ocr %d)", len(text), len(ocr_text))
+        return ocr_text
+    log.info("pdf text via pypdf (%d chars); ocr added nothing", len(text))
+    return text
 
 
 class BrowserListScraper(BaseScraper):

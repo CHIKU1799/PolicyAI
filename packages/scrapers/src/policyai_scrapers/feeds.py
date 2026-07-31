@@ -13,10 +13,10 @@ be reached over plain HTTP (JS challenges, WAF 403s, no /rss, junk XML); they
 now run as Playwright browser-rendered listing scrapers in ``browser_sources.py``
 under the same ``scraper_kind`` names. CERT-In, PFRDA, IFSCA and FIU-IND are
 enabled in ``monitoring_sources`` with live-verified listing URLs and full-text
-fetch. NPCI and DGFT are wired and discovery-verified but stay disabled: both
-publish scanned image PDFs with no text layer, so full text needs OCR (their
-rows already carry the working listing URLs, flip ``enabled`` once OCR exists).
-Still dead and disabled:
+fetch. NPCI and DGFT are also enabled: both publish scanned image PDFs with no
+text layer, and full text now comes from the RapidOCR fallback in
+``browser_base.pdf_bytes_to_text`` (live-verified on both sources; disable with
+``OCR_ENABLED=0``). Still dead and disabled:
 
 * CBDT (incometaxindia.gov.in): Akamai returns 403 even to a real headless
   Chromium with a desktop profile; needs a non-headless or residential path.

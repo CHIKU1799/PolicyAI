@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import get_llm, get_session
+from policyai_api.ratelimit import rate_limited
 
 router = APIRouter(prefix="/ask", tags=["ask"])
 
@@ -34,7 +35,9 @@ class AskResponse(BaseModel):
     citations: list[Citation]
 
 
-@router.post("", response_model=AskResponse)
+# /ask and /ask/stream share one budget (scope "ask"): 5/min anonymous (the
+# demo org must not become a free LLM proxy), 30/min authenticated.
+@router.post("", response_model=AskResponse, dependencies=[Depends(rate_limited("ask"))])
 async def ask_policyai(
     req: AskRequest,
     session: AsyncSession = Depends(get_session),
@@ -53,7 +56,7 @@ async def ask_policyai(
     return AskResponse(answer=result["answer"], citations=result["citations"])
 
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(rate_limited("ask"))])
 async def ask_policyai_stream(
     req: AskRequest,
     session: AsyncSession = Depends(get_session),
@@ -101,7 +104,11 @@ class ImpactResponse(BaseModel):
     suggested_actions: list[ImpactActionOut]
 
 
-@router.post("/impact-assessment", response_model=ImpactResponse)
+@router.post(
+    "/impact-assessment",
+    response_model=ImpactResponse,
+    dependencies=[Depends(rate_limited("impact"))],
+)
 async def impact_assessment(
     req: ImpactRequest,
     session: AsyncSession = Depends(get_session),

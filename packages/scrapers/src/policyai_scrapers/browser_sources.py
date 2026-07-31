@@ -136,9 +136,10 @@ class NPCICircularsScraper(BrowserListScraper):
     async def fetch(self, page: Page, meta: DocMeta) -> str:
         """The uploads CDN 403s any request that is not the page's own, so park
         the page on the listing once per session and fetch the PDF in-page. NPCI
-        circulars are scanned image PDFs with no text layer, so extraction usually
-        yields nothing; fall back to the title (as the MCA scraper does) so the
-        document is still recorded and can be OCR'd downstream."""
+        circulars are scanned image PDFs with no text layer; the shared
+        ``pdf_bytes_to_text`` OCR fallback recovers their text. If even that
+        fails, fall back to the title (as the MCA scraper does) so the document
+        is still recorded."""
         parts = urlsplit(self.base_url)
         if urlsplit(page.url).netloc != parts.netloc:
             await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60_000)

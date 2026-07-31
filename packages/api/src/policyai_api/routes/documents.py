@@ -9,6 +9,8 @@ and persist a CompanyDocument. Scanned PDFs with no text layer are flagged
 from __future__ import annotations
 
 import hashlib
+import os
+import posixpath
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -20,9 +22,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_api.auth import Principal, effective_org, resolve_principal
 from policyai_api.deps import download_from_storage, get_session
+from policyai_api.ratelimit import rate_limited
 from policyai_api.textextract import extract_text
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# Only formats textextract can actually handle; everything else is refused
+# instead of being stored as an opaque blob in the org's knowledge base.
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+
+
+def _max_upload_bytes() -> int:
+    try:
+        mb = max(1, int(os.getenv("UPLOAD_MAX_MB", "")))
+    except ValueError:
+        mb = 25
+    return mb * 1024 * 1024
+
+
+def _validate_storage_path(storage_path: str, org_id: UUID) -> None:
+    """The path must be a clean, org-prefixed object key: no traversal, no
+    absolute paths, and it must live under the caller's own org folder so one
+    tenant can never point the worker at another tenant's uploaded file."""
+    path = storage_path.strip()
+    if (
+        not path
+        or path != storage_path
+        or "\\" in path
+        or path.startswith("/")
+        or ".." in path.split("/")
+        or posixpath.normpath(path) != path
+    ):
+        raise HTTPException(status_code=422, detail="invalid storage path")
+    prefix, _, rest = path.partition("/")
+    if prefix != str(org_id) or not rest:
+        raise HTTPException(
+            status_code=403,
+            detail="storage path must be under your organization's folder (<org_id>/...)",
+        )
 
 
 class ProcessRequest(BaseModel):
@@ -38,7 +75,11 @@ class ProcessResponse(BaseModel):
     chars: int
 
 
-@router.post("/process", response_model=ProcessResponse)
+@router.post(
+    "/process",
+    response_model=ProcessResponse,
+    dependencies=[Depends(rate_limited("documents", require_auth=True))],
+)
 async def process_document(
     req: ProcessRequest,
     background: BackgroundTasks,
@@ -46,10 +87,24 @@ async def process_document(
     principal: Principal = Depends(resolve_principal),
 ) -> ProcessResponse:
     org_id = effective_org(principal, req.org_id)
+    ext = posixpath.splitext(req.filename.strip().lower())[1]
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"unsupported file type {ext or '(none)'}; "
+            f"allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+    _validate_storage_path(req.storage_path, org_id)
     try:
         content = await download_from_storage(req.storage_path)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"storage fetch failed: {exc}") from exc
+    if len(content) > _max_upload_bytes():
+        raise HTTPException(
+            status_code=413,
+            detail=f"file too large ({len(content) // (1024 * 1024)} MB); "
+            f"max {_max_upload_bytes() // (1024 * 1024)} MB",
+        )
 
     text = extract_text(content, filename=req.filename, mime=req.mime)
     content_hash = hashlib.sha256(content).hexdigest()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import hmac
 import os
 from collections.abc import AsyncIterator
 
@@ -36,7 +37,12 @@ async def download_from_storage(storage_path: str) -> bytes:
 
 
 def require_internal_secret(x_internal_secret: str = Header(default="")) -> None:
-    """Guard internal endpoints (pg_net trigger / manual re-run) with a shared secret."""
+    """Guard internal endpoints (pg_net trigger / manual re-run) with a shared secret.
+
+    Fails closed when INTERNAL_API_SECRET is unset; constant-time comparison so
+    the secret cannot be recovered via a timing side channel."""
     expected = os.getenv("INTERNAL_API_SECRET", "")
-    if not expected or x_internal_secret != expected:
+    if not expected or not hmac.compare_digest(
+        x_internal_secret.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="invalid internal secret")

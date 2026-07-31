@@ -209,8 +209,14 @@ async def as_of_snapshot(
 @router.get("/{node_id}", response_model=TimelineResponse)
 async def timeline(
     node_id: UUID,
+    org_id: UUID | None = None,
+    principal: Principal = Depends(resolve_principal),
     session: AsyncSession = Depends(get_session),
 ) -> TimelineResponse:
+    # The regulation lineage is shared reference data, but obligations, gaps
+    # and audit events are tenant rows: scope them to the caller's org (a
+    # client-supplied org_id is honored only for platform admins).
+    org = effective_org(principal, org_id)
     node = (await session.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
@@ -243,7 +249,14 @@ async def timeline(
         ).scalar_one_or_none()
 
     obligations = (
-        (await session.execute(select(Obligation).where(Obligation.regulation_node_id == node_id)))
+        (
+            await session.execute(
+                select(Obligation).where(
+                    Obligation.regulation_node_id == node_id,
+                    Obligation.org_id == org,
+                )
+            )
+        )
         .scalars()
         .all()
     )
@@ -265,7 +278,11 @@ async def timeline(
     gap_by_req: dict = {}
     if req_ids:
         gap_rows = (
-            (await session.execute(select(Gap).where(Gap.requirement_id.in_(req_ids))))
+            (
+                await session.execute(
+                    select(Gap).where(Gap.requirement_id.in_(req_ids), Gap.org_id == org)
+                )
+            )
             .scalars()
             .all()
         )
@@ -282,7 +299,12 @@ async def timeline(
     events = (
         (
             await session.execute(
-                select(AuditEvent).where(or_(*event_filter)).order_by(AuditEvent.created_at)
+                select(AuditEvent)
+                .where(
+                    or_(*event_filter),
+                    or_(AuditEvent.org_id.is_(None), AuditEvent.org_id == org),
+                )
+                .order_by(AuditEvent.created_at)
             )
         )
         .scalars()

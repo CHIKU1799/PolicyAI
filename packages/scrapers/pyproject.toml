@@ -10,6 +10,13 @@ dependencies = [
     "pydantic>=2.8",
     "policyai-graph",
     "policyai-extraction",
+    # OCR fallback for scanned regulator PDFs (NPCI, DGFT): pure-pip, no system
+    # packages. rapidocr ships detection+recognition ONNX models; pypdfium2
+    # rasterizes PDF pages without poppler. cv2 comes via the headless build
+    # (see the override in the root pyproject) so the Docker image needs no libGL.
+    "rapidocr-onnxruntime>=1.3",
+    "pypdfium2>=4.30",
+    "opencv-python-headless>=4.8",
 ]
 
 [build-system]
