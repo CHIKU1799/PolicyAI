@@ -553,10 +553,11 @@ MONITORING_SOURCES: list[dict] = [
     {
         "regulator_key": "certin",
         "name": "CERT-In — Advisories (RSS)",
-        "base_url": "https://www.cert-in.org.in/RSSFeeds.jsp",
+        "base_url": "https://www.cert-in.org.in/s2cMainServlet?pageid=PUBADVLIST",
         "scraper_kind": "certin_rss",
         "cadence_hours": 12,
-        "enabled": False,  # verify CERT-In RSS endpoint
+        # Browser-rendered advisory listing (browser_sources.py); the kind name
+        # is historical, there is no working RSS endpoint.
     },
     {
         "regulator_key": "cbic",
@@ -564,7 +565,7 @@ MONITORING_SOURCES: list[dict] = [
         "base_url": "https://www.cbic.gov.in/entities/view-rss",
         "scraper_kind": "cbic_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify CBIC RSS endpoint
+        "enabled": False,  # taxinformation.cbic.gov.in portal errors even when browser-rendered
     },
     {
         "regulator_key": "cbdt",
@@ -572,15 +573,17 @@ MONITORING_SOURCES: list[dict] = [
         "base_url": "https://incometaxindia.gov.in/_layouts/15/dit/pages/rss.aspx",
         "scraper_kind": "cbdt_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify CBDT RSS endpoint
+        "enabled": False,  # Akamai 403s even a real headless browser
     },
     {
         "regulator_key": "dgft",
         "name": "DGFT — Trade Notifications (RSS)",
-        "base_url": "https://www.dgft.gov.in/CP/?opt=rss",
+        "base_url": "https://www.dgft.gov.in/CP/?opt=notification",
         "scraper_kind": "dgft_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify DGFT RSS endpoint
+        # Browser-rendered notifications table (browser_sources.py). Disabled:
+        # DGFT notification PDFs are scanned images, full text needs OCR.
+        "enabled": False,
     },
     {
         "regulator_key": "egazette",
@@ -588,7 +591,7 @@ MONITORING_SOURCES: list[dict] = [
         "base_url": "https://egazette.gov.in/(S())/rss.aspx",
         "scraper_kind": "egazette_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify eGazette RSS endpoint
+        "enabled": False,  # broken TLS chain + session-keyed search flow, no stable listing
     },
     # --- Newly added BFSI regulators. Seeded disabled until each feed URL is
     # verified against the live endpoint (same convention as the feeds above). The
@@ -597,34 +600,36 @@ MONITORING_SOURCES: list[dict] = [
     {
         "regulator_key": "pfrda",
         "name": "PFRDA — Circulars (RSS)",
-        "base_url": "https://www.pfrda.org.in/rss",
+        "base_url": "https://www.pfrda.org.in/regulatory-framework/circulars/active-circulars",
         "scraper_kind": "pfrda_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify PFRDA feed/listing endpoint
+        # Browser-rendered active-circulars listing (browser_sources.py).
     },
     {
         "regulator_key": "ifsca",
         "name": "IFSCA — Circulars (RSS)",
-        "base_url": "https://ifsca.gov.in/rss",
+        "base_url": "https://ifsca.gov.in/Legal/Index/wF6kttc1JR8=",
         "scraper_kind": "ifsca_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify IFSCA feed/listing endpoint
+        # Browser-rendered circulars DataTable (browser_sources.py).
     },
     {
         "regulator_key": "npci",
         "name": "NPCI — Circulars (RSS)",
-        "base_url": "https://www.npci.org.in/rss",
+        "base_url": "https://www.npci.org.in/circulars/upi",
         "scraper_kind": "npci_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify NPCI feed/listing endpoint
+        # Browser-rendered UPI circulars page + its JSON API (browser_sources.py).
+        # Disabled: NPCI circular PDFs are scanned images, full text needs OCR.
+        "enabled": False,
     },
     {
         "regulator_key": "fiu_ind",
         "name": "FIU-IND — Directions (RSS)",
-        "base_url": "https://fiuindia.gov.in/rss",
+        "base_url": "https://fiuindia.gov.in/files/Compliance_Orders/orders.html",
         "scraper_kind": "fiu_rss",
         "cadence_hours": 24,
-        "enabled": False,  # verify FIU-IND feed/listing endpoint
+        # Browser-rendered compliance-orders table (browser_sources.py).
     },
 ]
 

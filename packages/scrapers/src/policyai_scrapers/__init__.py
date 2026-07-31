@@ -1,22 +1,26 @@
-"""Scrapers for Indian regulators — RBI, SEBI, IRDAI, MCA (HTML via Playwright)
-plus lighter RSS/Atom feed sources (tax, trade, cyber, gazette) via httpx.
+"""Scrapers for Indian regulators: RBI, SEBI, IRDAI, MCA (HTML via Playwright),
+lighter RSS/Atom feed sources via httpx, and browser-rendered listing sources
+(CERT-In, NPCI, PFRDA, IFSCA, FIU-IND, DGFT) for sites that bot-wall plain HTTP.
 
 ``SCRAPER_REGISTRY`` maps a ``MonitoringSource.scraper_kind`` to its scraper class
 so the runner can dispatch by configuration rather than hard-coding sources.
 """
 
 from policyai_scrapers.base import BaseScraper, DocMeta
+from policyai_scrapers.browser_base import BrowserListScraper
+from policyai_scrapers.browser_sources import (
+    CERTInAdvisoriesScraper,
+    DGFTNotificationsScraper,
+    FIUComplianceOrdersScraper,
+    IFSCACircularsScraper,
+    NPCICircularsScraper,
+    PFRDACircularsScraper,
+)
 from policyai_scrapers.feed_base import FeedScraper
 from policyai_scrapers.feeds import (
     CBDTFeed,
     CBICFeed,
-    CERTInFeed,
-    DGFTFeed,
     EGazetteFeed,
-    FIUFeed,
-    IFSCAFeed,
-    NPCIFeed,
-    PFRDAFeed,
     PIBFeed,
     RBIPressFeed,
 )
@@ -36,20 +40,23 @@ SCRAPER_REGISTRY: dict[str, type[BaseScraper]] = {
     # Lightweight RSS/Atom feed sources (no browser).
     RBIPressFeed.scraper_kind: RBIPressFeed,
     PIBFeed.scraper_kind: PIBFeed,
-    CERTInFeed.scraper_kind: CERTInFeed,
     CBICFeed.scraper_kind: CBICFeed,
     CBDTFeed.scraper_kind: CBDTFeed,
-    DGFTFeed.scraper_kind: DGFTFeed,
     EGazetteFeed.scraper_kind: EGazetteFeed,
-    # Newly added BFSI regulators (pension, IFSC, payments, financial-intelligence).
-    PFRDAFeed.scraper_kind: PFRDAFeed,
-    IFSCAFeed.scraper_kind: IFSCAFeed,
-    NPCIFeed.scraper_kind: NPCIFeed,
-    FIUFeed.scraper_kind: FIUFeed,
+    # Browser-rendered listing sources. These keep the *_rss kinds of the feed
+    # scrapers they replaced, so the existing monitoring_sources rows re-enable
+    # straight onto the new implementation (see browser_sources.py).
+    CERTInAdvisoriesScraper.scraper_kind: CERTInAdvisoriesScraper,
+    NPCICircularsScraper.scraper_kind: NPCICircularsScraper,
+    PFRDACircularsScraper.scraper_kind: PFRDACircularsScraper,
+    IFSCACircularsScraper.scraper_kind: IFSCACircularsScraper,
+    FIUComplianceOrdersScraper.scraper_kind: FIUComplianceOrdersScraper,
+    DGFTNotificationsScraper.scraper_kind: DGFTNotificationsScraper,
 }
 
 __all__ = [
     "BaseScraper",
+    "BrowserListScraper",
     "DocMeta",
     "FeedScraper",
     "RBIScraper",
@@ -58,14 +65,14 @@ __all__ = [
     "MCAScraper",
     "RBIPressFeed",
     "PIBFeed",
-    "CERTInFeed",
     "CBICFeed",
     "CBDTFeed",
-    "DGFTFeed",
     "EGazetteFeed",
-    "PFRDAFeed",
-    "IFSCAFeed",
-    "NPCIFeed",
-    "FIUFeed",
+    "CERTInAdvisoriesScraper",
+    "NPCICircularsScraper",
+    "PFRDACircularsScraper",
+    "IFSCACircularsScraper",
+    "FIUComplianceOrdersScraper",
+    "DGFTNotificationsScraper",
     "SCRAPER_REGISTRY",
 ]

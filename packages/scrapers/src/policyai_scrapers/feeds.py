@@ -7,13 +7,24 @@ configured per ``MonitoringSource`` (so a URL can be re-tuned without code chang
 eGazette also serves as the MCA bypass: MCA notifications are published there in
 authoritative form, away from MCA's Akamai bot wall.
 
-Source status audit (2026-07-29): PIB and RBI press feeds work over plain HTTP.
-The rest are disabled in ``monitoring_sources`` because their endpoints are
-bot-walled or gone for non-browser clients: CERT-In/FIU serve a JS challenge
-page instead of XML, NPCI/CBDT return WAF 403s, PFRDA/IFSCA have no /rss at
-all, DGFT emits junk past the document root, eGazette's TLS chain is broken.
-Re-enabling them needs Playwright-rendered fetching (see the RBI/SEBI scrapers)
-or discovered alternate endpoints; flip ``enabled`` in the DB once fixed.
+Source status audit (2026-07-31): PIB and RBI press feeds work over plain HTTP
+and stay on this module. CERT-In, NPCI, PFRDA, IFSCA, FIU-IND and DGFT could not
+be reached over plain HTTP (JS challenges, WAF 403s, no /rss, junk XML); they
+now run as Playwright browser-rendered listing scrapers in ``browser_sources.py``
+under the same ``scraper_kind`` names. CERT-In, PFRDA, IFSCA and FIU-IND are
+enabled in ``monitoring_sources`` with live-verified listing URLs and full-text
+fetch. NPCI and DGFT are wired and discovery-verified but stay disabled: both
+publish scanned image PDFs with no text layer, so full text needs OCR (their
+rows already carry the working listing URLs, flip ``enabled`` once OCR exists).
+Still dead and disabled:
+
+* CBDT (incometaxindia.gov.in): Akamai returns 403 even to a real headless
+  Chromium with a desktop profile; needs a non-headless or residential path.
+* CBIC (taxinformation.cbic.gov.in): the Angular portal takes ~80s to boot in
+  headless Chromium and then renders an in-app error on the circulars route;
+  www.cbic.gov.in itself exposes no circular listing outside that portal.
+* eGazette (egazette.gov.in): broken TLS chain plus a session-keyed ASP.NET
+  search flow with no stable listing page; not worth automating.
 """
 
 from __future__ import annotations
@@ -54,13 +65,6 @@ class PIBFeed(FeedScraper):
     regulator_key = "pib"
 
 
-class CERTInFeed(FeedScraper):
-    """CERT-In — cyber-security directions and advisories (IT Act / data security)."""
-
-    scraper_kind = "certin_rss"
-    regulator_key = "certin"
-
-
 class CBICFeed(FeedScraper):
     """CBIC — indirect tax / GST / customs circulars and notifications."""
 
@@ -75,43 +79,8 @@ class CBDTFeed(FeedScraper):
     regulator_key = "cbdt"
 
 
-class DGFTFeed(FeedScraper):
-    """DGFT — foreign-trade policy notifications and public notices."""
-
-    scraper_kind = "dgft_rss"
-    regulator_key = "dgft"
-
-
 class EGazetteFeed(FeedScraper):
     """eGazette — authoritative acts/rules; also the MCA-notifications bypass."""
 
     scraper_kind = "egazette_rss"
     regulator_key = "egazette"
-
-
-class PFRDAFeed(FeedScraper):
-    """PFRDA — pension-sector circulars (NPS/APY intermediaries, pension funds)."""
-
-    scraper_kind = "pfrda_rss"
-    regulator_key = "pfrda"
-
-
-class IFSCAFeed(FeedScraper):
-    """IFSCA — unified GIFT-City/IFSC regulator (banking, capital markets, insurance, funds)."""
-
-    scraper_kind = "ifsca_rss"
-    regulator_key = "ifsca"
-
-
-class NPCIFeed(FeedScraper):
-    """NPCI — retail-payments circulars/OCs (UPI, IMPS, NACH, RuPay)."""
-
-    scraper_kind = "npci_rss"
-    regulator_key = "npci"
-
-
-class FIUFeed(FeedScraper):
-    """FIU-IND — PMLA / AML-CFT directions for reporting entities."""
-
-    scraper_kind = "fiu_rss"
-    regulator_key = "fiu_ind"

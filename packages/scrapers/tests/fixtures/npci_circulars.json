@@ -1,0 +1,57 @@
+{
+ "files": [
+  {
+   "id": 3955,
+   "fileName": "UPI | OC No. 236 | FY 2026-27 | Enhancement of International Mobile Application Payment Acceptance through UPI QR in India - Please get in touch with your bank",
+   "mediaType": null,
+   "isDownloadable": false,
+   "isViewable": false,
+   "yearLabel": "FY 26-27",
+   "media": null
+  },
+  {
+   "id": 3953,
+   "fileName": "UPI | OC 235 | FY 26-27 | Revision of Turnaround Time (TAT) for Responding to Fraud and Wrong Credit Chargebacks in URCS Back Office System",
+   "mediaType": "pdf",
+   "isDownloadable": true,
+   "isViewable": true,
+   "yearLabel": "FY 26-27",
+   "media": {
+    "url": "/uploads/UPI_OC_No_235_FY_2026_27_Revision_of_Turnaround_Time_TAT_for_Responding_to_Fraud_and_Wrong_Credit_Chargebacks_in_URCS_Back_Office_System_aa420e4bcc.pdf"
+   }
+  },
+  {
+   "id": 3952,
+   "fileName": "UPI | OC 226A | FY 26-27 | Enhancement of Transaction Limit for On-Device Biometric Authentication in UPI",
+   "mediaType": "pdf",
+   "isDownloadable": true,
+   "isViewable": true,
+   "yearLabel": "FY 26-27",
+   "media": {
+    "url": "/uploads/UPI_OC_226_A_Enhancement_of_Transaction_Limit_for_On_Device_Biometric_Authentication_in_UPI_735a88b16a.pdf"
+   }
+  },
+  {
+   "id": 3951,
+   "fileName": "UPI |OC-128A | FY26-27\u00a0 Addendum to OC-128 Extension of additional response codes under Deemed Debit for mandate execution",
+   "mediaType": "pdf",
+   "isDownloadable": true,
+   "isViewable": true,
+   "yearLabel": "FY 26-27",
+   "media": {
+    "url": "/uploads/UPI_OC_128_A_Addendum_to_OC_128_Extension_of_additional_response_codes_under_Deemed_Debit_for_mandate_execution_3b1e59eab2.pdf"
+   }
+  },
+  {
+   "id": 3941,
+   "fileName": "UPI | OC No. 100B | FY 2026-27  Addendum to Mandatory Brand Guidelines for BHIM UPI Merchant QR",
+   "mediaType": "pdf",
+   "isDownloadable": true,
+   "isViewable": true,
+   "yearLabel": "FY 26-27",
+   "media": {
+    "url": "/uploads/UPI_OC_No_100_B_FY_2026_27_Addendum_to_Mandatory_Brand_Guidelines_for_BHIM_UPI_Merchant_QR_e88d1b6cd2.pdf"
+   }
+  }
+ ]
+}
