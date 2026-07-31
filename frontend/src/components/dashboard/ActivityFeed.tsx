@@ -51,7 +51,10 @@ function parse(a: Alert) {
   const code = src ? src[1].toUpperCase() : a.kind === "new_obligation" ? "OBL" : "REG";
   const sevMatch = a.message.match(SEV_RE);
   const sev = sevMatch ? (sevMatch[1].toLowerCase() as Severity) : null;
-  const title = a.message.replace(PREFIX_RE, "").replace(SEV_RE, "").trim();
+  let title = a.message.replace(PREFIX_RE, "").replace(SEV_RE, "").trim();
+  // Scan-failure alerts embed the raw fetch error after the first colon;
+  // keep only the human-readable "Scan failed for <source>" part here.
+  if (a.kind === "scan_failed") title = title.split(/:\s/)[0];
   const route = KIND_ROUTE[a.kind] ?? { href: "/obligations", label: "Update" };
   return { code, chip: REG_STYLE[code] ?? GRAY, sev, title, route };
 }
@@ -107,7 +110,7 @@ export default function ActivityFeed({ alerts, loading }: { alerts: Alert[]; loa
               {p.code}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 text-[12.5px] font-medium leading-snug text-[#26282e] group-hover:text-[#15161B]">
+              <span className="block text-[12.5px] font-medium leading-snug text-[#26282e] group-hover:text-[#15161B]">
                 {p.title}
               </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
