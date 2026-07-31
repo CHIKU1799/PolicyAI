@@ -1,145 +1,277 @@
 import type { Metadata } from "next";
 import MarketingShell from "@/components/marketing/Shell";
-import { Cta, Hero, Section } from "@/components/marketing/blocks";
+import {
+  ACCENT,
+  BODY,
+  CheckItem,
+  CtaBand,
+  FAINT,
+  INK,
+  Kicker,
+  LINE,
+  MUTED,
+  PageHero,
+} from "@/components/marketing/mkt2/ui";
 
 export const metadata: Metadata = {
   title: "Security · PolicyAI",
-  description: "How PolicyAI protects and isolates every firm's data.",
+  description:
+    "How PolicyAI isolates and protects every firm's data: row-level security, private storage, org-keyed caches, and no training on customer data.",
 };
+
+/** Small stroke icon in a tinted tile. */
+function IconTile({ path }: { path: React.ReactNode }) {
+  return (
+    <span
+      className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+      style={{ background: "rgba(75,64,196,.1)", color: ACCENT }}
+      aria-hidden
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        {path}
+      </svg>
+    </span>
+  );
+}
+
+const ICONS = {
+  shield: <path d="M12 3l7 3v5c0 4.4-3 8.4-7 9.7C8 19.4 5 15.4 5 11V6l7-3z" />,
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12L20 3m-3 3l3 3" />
+    </>
+  ),
+  folder: (
+    <>
+      <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+      <path d="M12 11v5m-2.5-2.5h5" />
+    </>
+  ),
+  server: (
+    <>
+      <rect x="3" y="4" width="18" height="7" rx="2" />
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M7 7.5h.01M7 16.5h.01" />
+    </>
+  ),
+  chip: (
+    <>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 7l9 6 9-6" />
+    </>
+  ),
+};
+
+const SECTIONS: {
+  id?: string;
+  icon: React.ReactNode;
+  kicker: string;
+  title: string;
+  body: string;
+  bullets: string[];
+}[] = [
+  {
+    id: "isolation",
+    icon: ICONS.shield,
+    kicker: "ORG ISOLATION",
+    title: "Every firm is its own workspace",
+    body: "Signing up provisions a fresh, isolated organization. Postgres row-level security runs with the caller's own token on every org-scoped table, so a session can only ever read its own firm's rows. Isolation is enforced at the database layer, not by UI hiding.",
+    bullets: [
+      "Row-level security on obligations, gaps, controls, policies, tasks and alerts",
+      "The API derives your org from the verified token and ignores client claims",
+      "The shared regulation graph is common by design; everything firm-specific is org-scoped",
+    ],
+  },
+  {
+    icon: ICONS.key,
+    kicker: "AUTHENTICATION & ROLES",
+    title: "Confirmed emails, invite-only teams",
+    body: "Accounts are confirmed by email through Supabase Auth. Teammates join only by invitation: an invited email joins the inviting firm's workspace at signup instead of getting a new one. Access is role-based, and the last admin of a workspace can never be demoted.",
+    bullets: [
+      "Email confirmation before first login",
+      "Admin-gated areas: document uploads and team management",
+      "Last-admin guard prevents accidental lockout",
+    ],
+  },
+  {
+    icon: ICONS.folder,
+    kicker: "DATA HANDLING",
+    title: "Private storage, and no training on your data",
+    body: "Your policy documents live in a private storage bucket with no public access; only server-side code holding the service role can read them. Nothing you upload is ever used to train AI models, and nothing derived from your data is visible to any other firm.",
+    bullets: [
+      "Documents in a private bucket, served through authenticated paths only",
+      "Service-role credentials stay server-side; the browser holds only the public anon key",
+      "No training on customer data, contractually and architecturally",
+    ],
+  },
+  {
+    icon: ICONS.server,
+    kicker: "INFRASTRUCTURE",
+    title: "Managed platforms, TLS everywhere",
+    body: "PolicyAI runs on Sevalla with data on Supabase's managed Postgres. All traffic is encrypted in transit with TLS, data is encrypted at rest, and secrets live in environment configuration, never in code or the client bundle.",
+    bullets: [
+      "TLS in transit, encryption at rest on managed Postgres",
+      "Secrets in env configuration, not in the repository",
+      "Internal service endpoints guarded by a shared secret",
+    ],
+  },
+  {
+    icon: ICONS.chip,
+    kicker: "LLM SAFETY",
+    title: "Switchable providers, org-keyed caches",
+    body: "The AI layer is provider-switchable in one command, from frontier models to open-weight models, and Enterprise deployments can run an open-weight model on your own infrastructure. Prompt and result caching never crosses firms: caches are keyed per organization.",
+    bullets: [
+      "Provider flexibility: frontier or open-weight models, your call",
+      "On-prem open-weight option for Enterprise",
+      "Cached extractions and answers are org-keyed; nothing leaks across workspaces",
+    ],
+  },
+  {
+    icon: ICONS.mail,
+    kicker: "RESPONSIBLE DISCLOSURE",
+    title: "Found something? Tell us directly",
+    body: "If you believe you have found a vulnerability, write to us and include steps to reproduce. We acknowledge reports within one business day, keep you informed while we fix, and credit reporters who wish to be named.",
+    bullets: [
+      "security@policyai.com for vulnerability reports",
+      "Acknowledgement within one business day",
+      "Vendor security questionnaires answered within one business week",
+    ],
+  },
+];
+
+const ROADMAP = [
+  "SOC 2 (roadmap)",
+  "ISO 27001 (roadmap)",
+  "SAML SSO & SCIM",
+  "Granular RBAC & activity log",
+  "India-region data residency",
+];
 
 export default function SecurityPage() {
   return (
     <MarketingShell>
-      <Hero
-        eyebrow="SECURITY"
-        title={
-          <>
-            Secure by design,
-            <br />
-            honest by default
-          </>
-        }
-        lede="No badge theatre. This page describes exactly how your data is protected today, and what is still on the roadmap."
-      />
+      <main className="mx-auto flex max-w-[1304px] flex-col gap-16 px-5 pb-24 pt-12 md:gap-24 md:px-8 md:pt-16">
+        <PageHero
+          kicker="SECURITY"
+          title="Built like your regulator is watching"
+          lede="No badge theatre and no vague claims. This page describes exactly how your data is isolated and protected today, and what is still on the roadmap, in the language your vendor-risk review will use."
+        />
 
-      <Section
-        id="isolation"
-        step="Tenant isolation"
-        title="Every firm is its own island"
-        body="Sign-up provisions a fresh, isolated organization. Row-level security in Postgres enforces that a firm's browser session can only ever read its own rows; the API independently derives your organization from your verified session token and ignores anything the client claims."
-        bullets={[
-          "Postgres row-level security on every org-scoped table",
-          "API org-scoping from the verified token, spoof-tested",
-          "Platform operators are separated by role, not by trust",
-        ]}
-      >
-        <div className="space-y-2 text-[12px]" style={{ color: "#3A3D44" }}>
-          <div className="rounded-lg border bg-white p-3" style={{ borderColor: "#EAE9E5" }}>
-            <span className="font-mono text-[11px]" style={{ color: "#1746D6" }}>
-              org_id = token.org
-            </span>
-            <div className="mt-1 text-[11px]" style={{ color: "#71757E" }}>
-              The worker resolves your firm from Supabase Auth on every request. A client-supplied
-              org id is ignored unless you are a platform operator.
-            </div>
-          </div>
-          <div className="rounded-lg border bg-white p-3" style={{ borderColor: "#EAE9E5" }}>
-            <span className="font-mono text-[11px]" style={{ color: "#1746D6" }}>
-              row level security: enabled
-            </span>
-            <div className="mt-1 text-[11px]" style={{ color: "#71757E" }}>
-              Obligations, gaps, controls, policies, documents, alerts: all filtered by membership
-              at the database layer.
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      <Section
-        step="Data protection"
-        title="Encryption and least privilege"
-        body="Data is encrypted in transit (TLS) and at rest on Supabase's managed Postgres. Secrets never ship to the browser; the frontend holds only the public anon key, and privileged operations run server-side behind a shared-secret internal API."
-        bullets={[
-          "TLS in transit, AES-256 at rest (managed Postgres)",
-          "Anon key in the browser, service credentials server-side only",
-          "Internal endpoints guarded by a shared secret",
-        ]}
-        flip
-      >
-        <div className="flex h-full items-center justify-center">
-          <div className="rounded-xl border bg-white px-6 py-5 text-center" style={{ borderColor: "#EAE9E5" }}>
-            <div className="text-[28px]">🔒</div>
-            <div className="mt-1 text-[12px] font-semibold" style={{ color: "#15254E" }}>
-              Encrypted at rest & in transit
-            </div>
-            <div className="text-[11px]" style={{ color: "#71757E" }}>
-              Supabase managed Postgres
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      <Section
-        step="Operations"
-        title="Operator oversight with fault checks"
-        body="The PolicyAI operations team monitors the machine that feeds every firm: crawler freshness, scan failures, ingestion throughput, mapping backlog and alert flow, from a console individual firms never see."
-        bullets={[
-          "Continuous system health checks",
-          "Control failures raise alerts at the database layer",
-          "Cross-firm visibility restricted to seeded platform admins",
-        ]}
-      >
-        <div className="space-y-1.5 text-[11.5px]">
-          {[
-            ["ok", "Scan runs (24h): no failures"],
-            ["ok", "Embeddings: all documents embedded"],
-            ["warn", "Mapping backlog: monitored"],
-            ["ok", "Alerts: flowing, 0 control failures"],
-          ].map(([tone, label]) => (
-            <div key={String(label)} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "#EAE9E5" }}>
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: tone === "ok" ? "#1F9D5B" : "#E0A63C" }}
-              />
-              <span style={{ color: "#3A3D44" }}>{label}</span>
+        {/* Posture cards */}
+        <section className="grid gap-4 md:grid-cols-2">
+          {SECTIONS.map((s, i) => (
+            <div
+              key={s.title}
+              id={s.id}
+              className="anim-rise flex scroll-mt-24 flex-col gap-3.5 rounded-[20px] border bg-white p-6 md:p-7"
+              style={{ borderColor: LINE, animationDelay: `${i * 0.05}s` }}
+            >
+              <div className="flex items-center gap-3.5">
+                <IconTile path={s.icon} />
+                <Kicker>{s.kicker}</Kicker>
+              </div>
+              <h2 className="m-0 text-[20px] font-bold leading-snug tracking-[-0.01em]" style={{ color: INK }}>
+                {s.title}
+              </h2>
+              <p className="m-0 text-pretty text-[13.5px] leading-relaxed" style={{ color: BODY }}>
+                {s.body}
+              </p>
+              <ul className="m-0 mt-auto flex list-none flex-col gap-2 border-t p-0 pt-3.5" style={{ borderColor: "#F4F4F1" }}>
+                {s.bullets.map((b) => (
+                  <CheckItem key={b}>{b}</CheckItem>
+                ))}
+              </ul>
             </div>
           ))}
-        </div>
-      </Section>
+        </section>
 
-      <Section
-        id="roadmap"
-        step="Roadmap"
-        title="What we have not built yet"
-        body="We would rather tell you plainly. These are planned, not shipped; if any of them is a hard requirement for your firm, talk to us and we will sequence accordingly."
-        bullets={[
-          "SAML SSO and SCIM provisioning",
-          "India-region data residency",
-          "Granular RBAC and full activity logging",
-          "Third-party certifications (SOC 2, ISO 27001)",
-        ]}
-        flip
-      >
-        <div className="flex h-full items-center justify-center text-center">
+        {/* How isolation actually works */}
+        <section
+          className="grid gap-8 rounded-[20px] border bg-white p-6 md:grid-cols-2 md:p-8"
+          style={{ borderColor: LINE }}
+        >
           <div>
-            <div className="text-[13px] font-semibold" style={{ color: "#15254E" }}>
-              Security questionnaire?
-            </div>
-            <div className="mt-1 max-w-[220px] text-[12px]" style={{ color: "#71757E" }}>
-              We answer vendor-risk questionnaires within one business week.
-            </div>
-            <a
-              href="/contact?intent=sales"
-              className="mt-3 inline-block rounded-lg px-4 py-2 text-[12.5px] font-semibold text-white no-underline"
-              style={{ background: "linear-gradient(135deg,#2E6BF7,#1746D6)" }}
-            >
-              Contact us
-            </a>
+            <Kicker>UNDER THE HOOD</Kicker>
+            <h2 className="serif mb-0 mt-2.5 text-[26px] font-medium leading-[1.15] tracking-[-0.02em] md:text-[32px]">
+              What &ldquo;isolated&rdquo; means, concretely
+            </h2>
+            <p className="mb-0 mt-3.5 text-pretty text-[14px] leading-relaxed" style={{ color: BODY }}>
+              A compliance buyer should not have to take tenancy on faith. These are the actual
+              mechanics: the database policy runs with your token, and privileged operations never
+              leave the server.
+            </p>
           </div>
-        </div>
-      </Section>
+          <div className="flex flex-col gap-2.5">
+            {[
+              {
+                code: "row level security: enabled",
+                note: "Every org-scoped table filters by workspace membership at the database layer, evaluated with the caller's own token.",
+              },
+              {
+                code: "org_id = token.org",
+                note: "The API resolves your firm from your verified session on every request; a client-supplied org id is ignored.",
+              },
+              {
+                code: "storage: private bucket",
+                note: "Uploaded documents are readable only by server-side code holding the service role; there are no public URLs.",
+              },
+              {
+                code: "llm_cache key: (org, prompt)",
+                note: "Cached AI results are keyed per organization, so one firm's answers can never surface in another firm's session.",
+              },
+            ].map((r) => (
+              <div key={r.code} className="rounded-[14px] border p-3.5" style={{ borderColor: "#F0F0EC", background: "#FCFCFB" }}>
+                <span className="mono text-[11.5px] font-semibold" style={{ color: ACCENT }}>
+                  {r.code}
+                </span>
+                <div className="mt-1 text-[12px] leading-relaxed" style={{ color: MUTED }}>
+                  {r.note}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <Cta title="Trust is earned in the details" body="Ask us anything about the architecture. We will show you the actual policies, not a badge wall." />
+        {/* Roadmap */}
+        <section id="roadmap" className="flex scroll-mt-24 flex-col items-center gap-5 text-center">
+          <Kicker>ROADMAP, STATED PLAINLY</Kicker>
+          <h2 className="serif m-0 max-w-[24ch] text-[26px] font-medium leading-[1.15] tracking-[-0.02em] md:text-[32px]">
+            What we have not built yet
+          </h2>
+          <p className="m-0 max-w-[62ch] text-pretty text-[14.5px] leading-relaxed" style={{ color: BODY }}>
+            We claim no certifications we do not hold. These items are planned, not shipped; if one of
+            them is a hard requirement for your firm, tell us and we will sequence it with you.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {ROADMAP.map((r) => (
+              <span
+                key={r}
+                className="rounded-full border bg-white px-3.5 py-1.5 text-[12.5px] font-semibold"
+                style={{ borderColor: LINE, color: "#3A3D44" }}
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+          <p className="m-0 text-[12.5px]" style={{ color: FAINT }}>
+            Running a vendor assessment? We answer security questionnaires within one business week.
+          </p>
+        </section>
+
+        <CtaBand
+          title="Trust is earned in the details"
+          body="Ask us anything about the architecture. We will walk your security team through the actual policies, not a badge wall."
+          primary={{ label: "Talk to us", href: "/contact?intent=sales" }}
+          secondary={{ label: "See pricing", href: "/pricing" }}
+        />
+      </main>
     </MarketingShell>
   );
 }
