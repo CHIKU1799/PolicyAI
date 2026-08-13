@@ -26,7 +26,7 @@ export const NAV: {
       { label: "Gap analysis", sub: "Your policies vs the rules, cited", href: "/platform#assess" },
       { label: "Controls testing", sub: "Effectiveness, trends and alerts", href: "/platform#test" },
       { label: "Policy governance", sub: "Versioned, approved, audit-ready", href: "/platform#govern" },
-      { label: "Knowledge graph", sub: "How every rule connects", href: "/platform#graph" },
+      { label: "How it works", sub: "Circular to audit-ready in days", href: "/#journey" },
     ],
   },
   {
