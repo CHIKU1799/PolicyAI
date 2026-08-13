@@ -17,7 +17,7 @@ import {
 export const metadata: Metadata = {
   title: "Resources · PolicyAI",
   description:
-    "The regulators we monitor, a live product walkthrough, guides for compliance teams, the blog and the changelog.",
+    "The regulators we monitor, the live knowledge graph, guides for compliance teams, the blog and the changelog.",
 };
 
 // The real monitored source list (docs/PLATFORM_GUIDE.md §1).
@@ -71,32 +71,32 @@ export default function ResourcesPage() {
         <PageHero
           kicker="RESOURCES"
           title="Learn the system before you buy it"
-          lede="The regulators we watch, a live walkthrough of the product, guides for compliance teams, and a plain record of what shipped."
+          lede="The live graph, the regulators we watch, guides for compliance teams, and a plain record of what shipped."
         />
 
         {/* Featured: graph + blog */}
         <section id="docs" className="grid scroll-mt-24 gap-4 lg:grid-cols-2">
-          {/* Journey card (dark, links to the landing journey band). */}
+          {/* Knowledge graph card (dark, links to the in-app graph explorer). */}
           <Link
-            href="/#journey"
+            href="/graph"
             className="anim-rise group flex flex-col justify-between gap-8 rounded-[20px] p-6 no-underline md:p-7"
             style={{ background: "#15161B", color: "#F5F4F2" }}
           >
             <div>
               <span className="mono text-[10.5px] font-semibold tracking-[.16em]" style={{ color: "#8A8FA0" }}>
-                LIVE WALKTHROUGH
+                LIVE DEMO
               </span>
               <h2 className="serif mb-0 mt-2.5 text-[26px] font-medium leading-[1.15] tracking-[-0.02em] md:text-[30px]">
-                Watch a circular become audit-ready
+                Touch the regulatory knowledge graph
               </h2>
               <p className="mb-0 mt-3 max-w-[52ch] text-[13.5px] leading-relaxed" style={{ color: "#A7ABB4" }}>
-                One RBI circular, followed end to end: published at 09:04, matched to your firm by
-                09:06, an obligation with owner and deadline by lunch, and a tested control with
-                citable evidence by Friday. The walkthrough is live on our landing page.
+                Circulars that amend master directions, entity classes they apply to, deadlines they
+                create: the full explorer with search and hop depth ships inside the platform. Sign
+                in to touch it live.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {["ALERT", "OBLIGATION", "GAP → OWNER", "CONTROL ✓"].map((e) => (
+              {["AMENDS", "SUPERSEDES", "APPLIES_TO", "DERIVED_FROM"].map((e) => (
                 <span
                   key={e}
                   className="mono rounded-md border px-2 py-1 text-[10px]"
@@ -106,7 +106,7 @@ export default function ResourcesPage() {
                 </span>
               ))}
               <span className="ml-auto text-[13.5px] font-semibold transition-transform group-hover:translate-x-1" style={{ color: "#B7AEF9" }}>
-                See the walkthrough →
+                Open the graph explorer →
               </span>
             </div>
           </Link>

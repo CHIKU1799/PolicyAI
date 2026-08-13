@@ -16,7 +16,7 @@ import {
 export const metadata: Metadata = {
   title: "Platform · PolicyAI",
   description:
-    "Five modules that turn regulatory change into action, end to end, in one connected system.",
+    "Five modules that turn regulatory change into action, end to end, on a shared knowledge graph.",
 };
 
 const FEED_ROWS = [
@@ -61,7 +61,7 @@ const PIPELINE = [
   {
     step: "02 · EXTRACT",
     title: "Circulars become a graph",
-    body: "Obligations, deadlines and amendments extracted into structured records your team can act on.",
+    body: "Obligations, entity classes, deadlines and amendment edges extracted into the live knowledge graph.",
   },
   {
     step: "03 · MAP",
@@ -90,7 +90,7 @@ export default function PlatformPage() {
               end to end
             </>
           }
-          lede="From the first regulatory signal to an audit-ready policy: five modules that work as one continuous workflow."
+          lede="From the first regulatory signal to an audit-ready policy: five modules that work as one continuous workflow, on a shared knowledge graph."
         />
 
         <SplitSection
@@ -300,7 +300,7 @@ export default function PlatformPage() {
           </VignetteCard>
         </SplitSection>
 
-        {/* Intelligence-layer foundation band */}
+        {/* Knowledge graph foundation band */}
         <section
           id="graph"
           className="flex scroll-mt-24 flex-wrap items-center gap-9 rounded-3xl p-8 sm:p-11 md:p-12"
@@ -311,20 +311,19 @@ export default function PlatformPage() {
               FOUNDATION
             </span>
             <h2 className="serif mb-0 mt-2.5 text-[28px] font-medium leading-[1.12] tracking-[-0.02em] md:text-[34px]">
-              Everything above runs on one intelligence layer
+              Everything above runs on the knowledge graph
             </h2>
             <p className="mb-0 mt-3 max-w-[52ch] text-[14.5px] leading-[1.65]" style={{ color: "#9AA0AB" }}>
-              2,800+ regulations, deadlines and amendments, connected and kept current, so every
-              alert, obligation and answer traces back to the exact source paragraph. When a rule is
-              superseded, everything it touched updates with it.
+              2,800+ nodes: regulations, regulators, entity classes, topics, parent acts and
+              deadlines, with amends, supersedes and applies-to edges kept live.
             </p>
           </div>
           <Link
-            href="/#journey"
+            href="/graph"
             className="rounded-[13px] px-6 py-[15px] text-[15px] font-semibold text-white no-underline"
             style={{ background: "#4B40C4" }}
           >
-            See it in action <span aria-hidden>→</span>
+            Open the live graph <span aria-hidden>→</span>
           </Link>
         </section>
 
