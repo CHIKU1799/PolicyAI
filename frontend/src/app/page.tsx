@@ -1,7 +1,7 @@
 import Link from "next/link";
 import MarketingShell from "@/components/marketing/Shell";
 import DashboardMock, { sparkPath } from "@/components/marketing/DashboardMock";
-import GraphBand from "@/components/marketing/GraphBand";
+import JourneyBand from "@/components/marketing/JourneyBand";
 import { AmbientDepth, Reveal } from "@/components/marketing/PaiMotion";
 
 // Public marketing landing page. The product lives behind /login -> /dashboard.
@@ -63,8 +63,8 @@ export default function Home() {
           </h1>
           <p className="m-0 max-w-[60ch] text-pretty text-[16px] leading-relaxed md:text-[18px]" style={{ color: "#5B5E66" }}>
             PolicyAI watches RBI, SEBI, IRDAI and MeitY around the clock, turns each update into
-            structured obligations on a live knowledge graph, and tracks them through controls,
-            evidence and approvals, so nothing slips through.
+            clear obligations for your firm, and tracks them through controls, evidence and
+            approvals, so nothing slips through.
           </p>
           <div className="mt-1.5 flex flex-wrap justify-center gap-3.5">
             <Link
@@ -75,11 +75,11 @@ export default function Home() {
               Explore the platform <span aria-hidden className="text-[18px]">→</span>
             </Link>
             <a
-              href="#graph"
+              href="#journey"
               className="inline-flex items-center gap-2.5 rounded-[14px] border bg-white px-[26px] py-4 text-[16px] font-semibold no-underline"
               style={{ borderColor: "#EAE9E5", color: "#15161B" }}
             >
-              See the live graph
+              See how it works
             </a>
           </div>
           <div className="text-[13.5px]" style={{ color: "#9A9DA4" }}>
@@ -92,28 +92,29 @@ export default function Home() {
           <DashboardMock />
         </Reveal>
 
-        {/* Knowledge graph band */}
-        <section id="graph" className="relative z-10 flex scroll-mt-24 flex-col gap-[22px]">
+        {/* Journey band — one circular, publication to audit-ready proof */}
+        <section id="journey" className="relative z-10 flex scroll-mt-24 flex-col gap-[22px]">
           <div className="flex flex-wrap items-end gap-7">
             <div className="min-w-[280px] flex-1 sm:min-w-[340px]">
               <span className="mono text-[11px] font-semibold tracking-[.18em]" style={{ color: "#71757E" }}>
-                FOUNDATION
+                A TUESDAY WITH POLICYAI
               </span>
               <h2 className="serif mb-0 mt-2.5 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[42px]">
-                The regulatory knowledge graph
+                From circular to audit-ready. In days, not quarters.
               </h2>
             </div>
             <p
               className="m-0 min-w-[280px] flex-1 text-pretty text-[15.5px] leading-[1.65] sm:min-w-[320px]"
               style={{ color: "#5B5E66" }}
             >
-              Indian regulation is relational: circulars amend master directions, apply to entity
-              classes and derive from parent acts. PolicyAI keeps those edges live. Move your cursor
-              through the field to disturb it, hover a node to isolate its neighbourhood, click to
-              inspect.
+              The moment a regulator publishes, PolicyAI reads it, decides whether it binds you,
+              drafts the obligation, opens the gap and assigns the owner. Your team walks in to a
+              to-do list with citations, not a 40-page PDF.
             </p>
           </div>
-          <GraphBand />
+          <Reveal>
+            <JourneyBand />
+          </Reveal>
         </section>
 
         {/* Modules */}
