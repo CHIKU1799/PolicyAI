@@ -18,6 +18,7 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/knowledge-base": { title: "Knowledge Base", subtitle: "Your company's policies and registrations" },
   "/team": { title: "Team", subtitle: "Invite teammates and manage their org roles" },
   "/graph": { title: "Knowledge Graph", subtitle: "How regulations connect to entities, topics & deadlines" },
+  "/workflow": { title: "Workflow", subtitle: "The end-to-end compliance flow, and how the work is allocated" },
   "/ask": { title: "Ask PolicyAI", subtitle: "Grounded answers across your regulatory data" },
 };
 

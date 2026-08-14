@@ -114,12 +114,12 @@ const STEPS: Step[] = [
     target: "ask",
   },
   {
-    key: "graph",
-    title: "Explore how everything connects",
-    desc: "The Regulation Graph links circulars, topics, entities and deadlines, so you can trace any requirement back to its source in a couple of hops.",
+    key: "workflow",
+    title: "Run the whole flow from one page",
+    desc: "The Workflow page shows the full journey, from a circular landing to audit-ready proof, and lets you assign every open task to a teammate with a due date.",
     icon: Share2,
-    href: "/graph",
-    target: "nav-graph",
+    href: "/workflow",
+    target: "nav-workflow",
   },
   {
     key: "done",

@@ -9,7 +9,7 @@ import {
   ShieldAlert,
   ListChecks,
   BookOpen,
-  Share2,
+  Workflow,
   TriangleAlert,
   ShieldCheck,
   FileText,
@@ -26,7 +26,7 @@ import { useOrgRole } from "@/lib/useOrgRole";
 const MONITOR = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance", tour: "nav-dashboard" },
   { href: "/obligations", label: "Obligations", icon: ShieldAlert, hint: "What the regulations require you to do", tour: "nav-obligations" },
-  { href: "/graph", label: "Knowledge Graph", icon: Share2, hint: "Explore how regulations, topics and deadlines connect", tour: "nav-graph" },
+  { href: "/workflow", label: "Workflow", icon: Workflow, hint: "The full journey from circular to audit-ready, and who is doing what", tour: "nav-workflow" },
 ];
 const MANAGE = [
   { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert, hint: "Obligations you are not fully covering yet", tour: "nav-gaps" },

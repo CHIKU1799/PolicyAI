@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from policyai_api.auth import Principal, require_org_admin
+from policyai_api.auth import Principal, require_org_admin, resolve_principal
 from policyai_api.deps import get_session
 
 router = APIRouter(prefix="/org", tags=["org"])
@@ -91,6 +91,34 @@ async def list_members(
         MemberRow(user_id=uid, email=email, role=role, joined_at=joined)
         for uid, email, role, joined in rows.all()
     ]
+
+
+class RosterRow(BaseModel):
+    user_id: str
+    email: str | None
+    role: str
+
+
+# Unlike /members (org-admin only, drives the Team page), the roster is open to
+# every signed-in member: assigning a task on the Workflow page needs the list
+# of teammates, and that is all this returns.
+@router.get("/roster", response_model=list[RosterRow])
+async def org_roster(
+    principal: Principal = Depends(resolve_principal),
+    session: AsyncSession = Depends(get_session),
+) -> list[RosterRow]:
+    if not principal.authenticated:
+        raise HTTPException(status_code=401, detail="authentication required")
+    rows = await session.execute(
+        text(
+            "select m.user_id::text, u.email, m.role "
+            "from public.memberships m "
+            "left join auth.users u on u.id = m.user_id "
+            "where m.org_id = :org_id order by u.email asc nulls last"
+        ),
+        {"org_id": str(principal.org_id)},
+    )
+    return [RosterRow(user_id=uid, email=email, role=role) for uid, email, role in rows.all()]
 
 
 @router.get("/invites", response_model=list[InviteRow])
