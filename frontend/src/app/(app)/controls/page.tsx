@@ -22,7 +22,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Plus, FlaskConical, X } from "lucide-react";
+import { Plus, FlaskConical, X, Sparkles } from "lucide-react";
 import { getSupabase, getOrgId, workerFetch } from "@/lib/supabase";
 import AskCopilotLink from "@/components/AskCopilotLink";
 import ControlMappingGuide from "@/components/insights/ControlMappingGuide";
@@ -50,6 +50,14 @@ interface ControlLink {
   control_id: string;
 }
 
+interface SuggestedControl {
+  title: string;
+  description: string;
+  control_type: string;
+  frequency: string;
+  rationale: string;
+}
+
 const inputCls =
   "w-full rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-sm text-slate-700";
 
@@ -74,6 +82,8 @@ export default function ControlsPage() {
   const [fObls, setFObls] = useState<Set<string>>(new Set());
   const [oblSearch, setOblSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedControl[]>([]);
 
   // record-test form (one open row at a time)
   const [testFor, setTestFor] = useState<string | null>(null);
@@ -194,6 +204,44 @@ export default function ControlsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Agentic assist: the worker drafts controls for the selected obligations
+  // (grounded in the obligation text and the existing register); the user
+  // reviews and applies a draft, then still clicks Create. Human in the loop.
+  async function suggestWithAI() {
+    if (fObls.size === 0) {
+      toast("Tick at least one obligation first, then suggest", "error");
+      return;
+    }
+    setSuggesting(true);
+    setSuggestions([]);
+    try {
+      const resp = await workerFetch("/controls/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ obligation_ids: Array.from(fObls).slice(0, 3) }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => null);
+        throw new Error(typeof body?.detail === "string" ? body.detail : `worker responded ${resp.status}`);
+      }
+      const data = await resp.json();
+      setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+      if (!data.suggestions?.length) toast("No suggestions came back, try different obligations", "error");
+    } catch (err) {
+      toast(`Couldn't get suggestions: ${(err as Error).message}`, "error");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function applySuggestion(s: SuggestedControl) {
+    setFTitle(s.title);
+    setFDesc(s.description);
+    setFType(s.control_type);
+    setFFreq(s.frequency);
+    toast("Draft applied. Review, set an owner, then create.");
   }
 
   async function recordTest(control: Control) {
@@ -393,6 +441,41 @@ export default function ControlsPage() {
                   <div className="px-3 py-4 text-center text-xs text-[var(--muted)]">No obligations match.</div>
                 )}
               </div>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={suggestWithAI}
+                  disabled={suggesting || fObls.size === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#D8D2F5] bg-[#F8F7FE] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] disabled:opacity-50"
+                >
+                  <Sparkles size={13} /> {suggesting ? "Drafting..." : "Suggest with AI"}
+                </button>
+                <span className="text-[11px] text-[var(--muted)]">
+                  Drafts controls for the ticked obligations, grounded in your existing register
+                </span>
+              </div>
+              {suggestions.length > 0 && (
+                <div className="mt-2 flex flex-col gap-2">
+                  {suggestions.map((s, i) => (
+                    <div key={i} className="rounded-lg border border-[#E4E0F7] bg-white p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-semibold text-slate-800">{s.title}</div>
+                          <div className="mt-0.5 text-[12px] leading-relaxed text-slate-600">{s.description}</div>
+                          <div className="mt-1 text-[11px] text-[var(--muted)]">
+                            <span className="capitalize">{s.control_type}</span> · {s.frequency} · {s.rationale}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => applySuggestion(s)}
+                          className="shrink-0 rounded-md border border-[var(--brand)] px-2.5 py-1 text-xs font-semibold text-[var(--brand)] hover:bg-[#F8F7FE]"
+                        >
+                          Use this
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-3 flex justify-end gap-2">

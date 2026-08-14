@@ -20,6 +20,7 @@ from policyai_api.routes import (
     admin,
     ask,
     contact,
+    controls,
     documents,
     graph,
     insights,
@@ -60,6 +61,7 @@ app.include_router(admin.router)
 app.include_router(contact.router)
 app.include_router(org.router)
 app.include_router(public.router)
+app.include_router(controls.router)
 
 
 @app.get("/health")
