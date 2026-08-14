@@ -85,7 +85,7 @@ export default function DashboardPage() {
         supabase.from("gaps").select("*"),
         supabase.from("controls").select("*"),
         supabase.from("tasks").select("*"),
-        supabase.from("alerts").select("*").neq("kind", "scan_failed").order("created_at", { ascending: false }).limit(5),
+        supabase.from("alerts").select("*").neq("kind", "scan_failed").order("created_at", { ascending: false }).limit(8),
         supabase.from("obligation_controls").select("obligation_id"),
       ]);
       setObligations((o.data as Obligation[]) ?? []);
