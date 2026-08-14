@@ -1,18 +1,22 @@
-"""Public, unauthenticated intel for the marketing landing page: what the
-crawler has actually ingested, so the site shows real numbers instead of a
-mockup. Serves only global regulatory data (raw_documents, monitoring_sources)
-and never org-scoped rows. TTL-cached hard (one shared payload) and rate
-limited per IP, so the anonymous internet cannot turn it into a DB hammer."""
+"""Public, unauthenticated endpoints: landing-page intel and signup.
+
+Intel serves only global regulatory data (raw_documents, monitoring_sources)
+and never org-scoped rows; TTL-cached hard (one shared payload). Signup
+creates the auth user pre-confirmed via the service-role admin API, because
+Supabase's built-in SMTP (about 2 mails an hour) silently drops confirmation
+emails and locks new users out. Both are rate limited per IP."""
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, HTTPException
 from policyai_graph.models import RawDocument
 from policyai_graph.models_app import MonitoringSource
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -146,3 +150,56 @@ async def _intel_payload(_key: str, session: AsyncSession) -> IntelResponse:
 )
 async def landing_intel(session: AsyncSession = Depends(get_session)) -> IntelResponse:
     return await _intel_payload("intel", session)
+
+
+class SignupRequest(BaseModel):
+    email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=160)
+    # Supabase (bcrypt) truncates at 72 bytes, so cap the input there too.
+    password: str = Field(min_length=8, max_length=72)
+    company: str | None = Field(default=None, max_length=120)
+
+
+class SignupResponse(BaseModel):
+    ok: bool
+
+
+# Signup without the confirmation-email dance: the account is created already
+# confirmed and the client signs in with the password right away. The 0012/0014
+# DB triggers still fire on the auth.users insert, so invited emails join the
+# inviter's org and everyone else gets a fresh org named from company_name.
+# Trade-off (deliberate, until real SMTP is configured in Supabase): the email
+# address is not proven to belong to the signer-upper.
+@router.post(
+    "/signup",
+    response_model=SignupResponse,
+    dependencies=[Depends(rate_limited("signup"))],
+)
+async def public_signup(req: SignupRequest) -> SignupResponse:
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise HTTPException(status_code=501, detail="signup not configured on this worker")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{url.rstrip('/')}/auth/v1/admin/users",
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                json={
+                    "email": req.email.strip().lower(),
+                    "password": req.password,
+                    "email_confirm": True,
+                    "user_metadata": {"company_name": (req.company or "").strip()},
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="could not reach auth service") from exc
+    if resp.status_code in (200, 201):
+        return SignupResponse(ok=True)
+    detail = ""
+    try:
+        detail = str(resp.json().get("msg") or resp.json().get("message") or "")
+    except ValueError:
+        pass
+    if resp.status_code == 422 and "registered" in detail.lower():
+        raise HTTPException(status_code=409, detail="this email is already registered")
+    raise HTTPException(status_code=502, detail=detail or "signup failed")

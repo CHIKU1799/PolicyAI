@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, workerFetch } from "@/lib/supabase";
 import { ButtonSpinner } from "@/components/Loading";
 import { LogoMark } from "@/components/Logo";
 
@@ -240,8 +240,46 @@ export default function LoginPage() {
     setCanResend(false);
     try {
       if (mode === "signup") {
-        // company_name lands in raw_user_meta_data; the DB trigger provisions a
-        // fresh org named from it and makes this user its admin.
+        // Preferred path: the worker creates the account pre-confirmed (no
+        // confirmation email involved, Supabase's built-in SMTP drops them)
+        // and we sign straight in. company_name lands in raw_user_meta_data
+        // either way; the DB trigger provisions the org from it.
+        try {
+          const resp = await workerFetch("/public/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password, company: company.trim() }),
+          });
+          if (resp.ok) {
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            router.push("/dashboard");
+            router.refresh();
+            return;
+          }
+          if (resp.status === 409) {
+            setMsg("This email is already registered. Sign in instead.");
+            setMode("signin");
+            return;
+          }
+          if (resp.status === 429) {
+            setMsg("Too many signup attempts. Please wait a minute and try again.");
+            return;
+          }
+          if (resp.status === 400 || resp.status === 422) {
+            const body = await resp.json().catch(() => null);
+            setMsg(
+              typeof body?.detail === "string"
+                ? body.detail
+                : "Please check your email and use a password of at least 8 characters.",
+            );
+            return;
+          }
+          // 501 (worker without service key) or 5xx: fall through to the
+          // legacy confirmation-email flow below.
+        } catch {
+          // Worker unreachable: fall through to the legacy flow.
+        }
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
