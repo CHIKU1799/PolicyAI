@@ -1,7 +1,7 @@
 import Link from "next/link";
 import MarketingShell from "@/components/marketing/Shell";
 import DashboardMock, { sparkPath } from "@/components/marketing/DashboardMock";
-import JourneyBand from "@/components/marketing/JourneyBand";
+import LiveIntelBand from "@/components/marketing/LiveIntelBand";
 import { AmbientDepth, Reveal } from "@/components/marketing/PaiMotion";
 
 // Public marketing landing page. The product lives behind /login -> /dashboard.
@@ -75,11 +75,11 @@ export default function Home() {
               Explore the platform <span aria-hidden className="text-[18px]">→</span>
             </Link>
             <a
-              href="#journey"
+              href="#live"
               className="inline-flex items-center gap-2.5 rounded-[14px] border bg-white px-[26px] py-4 text-[16px] font-semibold no-underline"
               style={{ borderColor: "#EAE9E5", color: "#15161B" }}
             >
-              See how it works
+              See it live
             </a>
           </div>
           <div className="text-[13.5px]" style={{ color: "#9A9DA4" }}>
@@ -92,28 +92,28 @@ export default function Home() {
           <DashboardMock />
         </Reveal>
 
-        {/* Journey band — one circular, publication to audit-ready proof */}
-        <section id="journey" className="relative z-10 flex scroll-mt-24 flex-col gap-[22px]">
+        {/* Live intel band: real corpus numbers and the latest circulars */}
+        <section id="live" className="relative z-10 flex scroll-mt-24 flex-col gap-[22px]">
           <div className="flex flex-wrap items-end gap-7">
             <div className="min-w-[280px] flex-1 sm:min-w-[340px]">
               <span className="mono text-[11px] font-semibold tracking-[.18em]" style={{ color: "#71757E" }}>
-                A TUESDAY WITH POLICYAI
+                LIVE REGULATORY INTELLIGENCE
               </span>
               <h2 className="serif mb-0 mt-2.5 text-[32px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[42px]">
-                From circular to audit-ready. In days, not quarters.
+                Watching the regulators. Right now.
               </h2>
             </div>
             <p
               className="m-0 min-w-[280px] flex-1 text-pretty text-[15.5px] leading-[1.65] sm:min-w-[320px]"
               style={{ color: "#5B5E66" }}
             >
-              The moment a regulator publishes, PolicyAI reads it, decides whether it binds you,
-              drafts the obligation, opens the gap and assigns the owner. Your team walks in to a
-              to-do list with citations, not a 40-page PDF.
+              This is the platform&apos;s own corpus, live on the page: what the crawler has ingested,
+              which regulator published what, and the newest circulars, minutes after they land on
+              the regulator&apos;s site.
             </p>
           </div>
           <Reveal>
-            <JourneyBand />
+            <LiveIntelBand />
           </Reveal>
         </section>
 

@@ -1,0 +1,148 @@
+"""Public, unauthenticated intel for the marketing landing page: what the
+crawler has actually ingested, so the site shows real numbers instead of a
+mockup. Serves only global regulatory data (raw_documents, monitoring_sources)
+and never org-scoped rows. TTL-cached hard (one shared payload) and rate
+limited per IP, so the anonymous internet cannot turn it into a DB hammer."""
+
+from __future__ import annotations
+
+import re
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends
+from policyai_graph.models import RawDocument
+from policyai_graph.models_app import MonitoringSource
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from policyai_api.deps import get_session
+from policyai_api.ratelimit import rate_limited
+from policyai_api.ttl_cache import ttl_cache
+
+router = APIRouter(prefix="/public", tags=["public"])
+
+FEED_LIMIT = 9
+REGULATOR_LIMIT = 6
+
+# Portal titles often carry download-page debris: attachment size suffixes
+# ("… .pdf 829 KB") and whitespace runs from scraped markup.
+_TITLE_JUNK = re.compile(r"\s*\S+\.pdf\s+\d+(\.\d+)?\s*[KM]B\s*$", re.IGNORECASE)
+
+
+def _clean_title(title: str) -> str:
+    return _TITLE_JUNK.sub("", " ".join(title.split())).strip()
+
+
+class IntelDoc(BaseModel):
+    source: str
+    title: str
+    url: str
+    published: str | None
+
+
+class RegulatorCount(BaseModel):
+    source: str
+    count: int
+
+
+class IntelStats(BaseModel):
+    total_documents: int
+    documents_30d: int
+    regulators_live: int
+    sources_enabled: int
+    last_synced: str | None
+
+
+class IntelResponse(BaseModel):
+    stats: IntelStats
+    latest: list[IntelDoc]
+    by_regulator: list[RegulatorCount]
+
+
+@ttl_cache(seconds=300, max_entries=4)
+async def _intel_payload(_key: str, session: AsyncSession) -> IntelResponse:
+    total = await session.scalar(select(func.count()).select_from(RawDocument)) or 0
+    cutoff = datetime.now(UTC) - timedelta(days=30)
+    recent = (
+        await session.scalar(
+            select(func.count()).select_from(RawDocument).where(RawDocument.fetched_at >= cutoff)
+        )
+        or 0
+    )
+
+    src_rows = (
+        await session.execute(
+            select(
+                MonitoringSource.regulator_key,
+                func.count().filter(MonitoringSource.enabled),
+                func.max(MonitoringSource.last_scanned_at),
+            ).group_by(MonitoringSource.regulator_key)
+        )
+    ).all()
+    regulators_live = sum(1 for _, enabled, _ts in src_rows if enabled)
+    sources_enabled = sum(enabled for _, enabled, _ts in src_rows)
+    scanned = [ts for _, _e, ts in src_rows if ts is not None]
+    last_synced = max(scanned).isoformat() if scanned else None
+
+    latest_rows = (
+        await session.execute(
+            select(
+                RawDocument.source,
+                RawDocument.title,
+                RawDocument.source_url,
+                RawDocument.published_date,
+            )
+            # A public-facing feed: drop rows scrapers left with junk titles
+            # ("NOTIFICATIONS") or future effective dates that would pin
+            # themselves to the top of a recency sort.
+            .where(
+                RawDocument.published_date.is_not(None),
+                RawDocument.published_date <= func.current_date(),
+                func.length(RawDocument.title) >= 20,
+            )
+            .order_by(
+                RawDocument.published_date.desc(),
+                RawDocument.fetched_at.desc(),
+            )
+            .limit(FEED_LIMIT)
+        )
+    ).all()
+
+    by_reg_rows = (
+        await session.execute(
+            select(RawDocument.source, func.count())
+            .group_by(RawDocument.source)
+            .order_by(func.count().desc())
+            .limit(REGULATOR_LIMIT)
+        )
+    ).all()
+
+    return IntelResponse(
+        stats=IntelStats(
+            total_documents=total,
+            documents_30d=recent,
+            regulators_live=regulators_live,
+            sources_enabled=sources_enabled,
+            last_synced=last_synced,
+        ),
+        latest=[
+            IntelDoc(
+                source=source,
+                title=_clean_title(title),
+                url=url,
+                published=published.isoformat() if published else None,
+            )
+            for source, title, url, published in latest_rows
+        ],
+        by_regulator=[RegulatorCount(source=s, count=c) for s, c in by_reg_rows],
+    )
+
+
+@router.get(
+    "/intel",
+    response_model=IntelResponse,
+    dependencies=[Depends(rate_limited("public_intel"))],
+)
+async def landing_intel(session: AsyncSession = Depends(get_session)) -> IntelResponse:
+    return await _intel_payload("intel", session)
