@@ -200,11 +200,17 @@ export default function OnboardingTour() {
   }, []);
 
   const close = useCallback((completed: boolean) => {
+    const state = completed ? "done" : "skipped";
     try {
-      window.localStorage.setItem(storageKey.current, completed ? "done" : "skipped");
+      window.localStorage.setItem(storageKey.current, state);
     } catch {
       // storage unavailable: the tour will simply offer itself again next visit
     }
+    // Also persist on the auth user, so a new device or cleared browser does
+    // not restart the tour for someone who already finished it.
+    getSupabase()
+      ?.auth.updateUser({ data: { policyai_tour: state } })
+      .catch(() => {});
     setPhase("closing");
     window.setTimeout(() => setPhase("closed"), 240);
   }, []);
@@ -218,17 +224,20 @@ export default function OnboardingTour() {
     let cancelled = false;
     (async () => {
       let id = "anon";
+      let doneOnServer = false;
       try {
         const supabase = getSupabase();
         if (supabase) {
           const { data } = await supabase.auth.getUser();
           if (data.user?.id) id = data.user.id;
+          doneOnServer = Boolean(data.user?.user_metadata?.policyai_tour);
         }
       } catch {
         // fall back to the generic key
       }
       if (cancelled) return;
       storageKey.current = `${STORAGE_PREFIX}:${id}`;
+      if (doneOnServer) return;
       try {
         if (!window.localStorage.getItem(storageKey.current)) {
           window.setTimeout(() => {

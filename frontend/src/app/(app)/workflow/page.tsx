@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
+import { fetchOrgCounts } from "@/lib/metrics";
 import { TableSkeleton } from "@/components/Loading";
 import { PageHeader, Badge, DemoBanner } from "@/components/ui";
 import { toast } from "@/components/Toast";
@@ -69,27 +70,20 @@ export default function WorkflowPage() {
       setLoading(false);
       return;
     }
-    const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    // Counts come from exact count queries: PostgREST caps plain selects at
-    // 1,000 rows, which silently understates gap numbers at this org's scale.
+    // Headline counts come from the shared metrics module (exact count
+    // queries, consistent vocabulary across pages); rows are fetched only
+    // where the page actually renders them (the task queue, the controls).
     Promise.all([
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
-      supabase.from("gaps").select("id", { count: "exact", head: true }).in("status", ["open", "remediating"]),
-      supabase
-        .from("gaps")
-        .select("id", { count: "exact", head: true })
-        .in("status", ["open", "remediating"])
-        .in("severity", ["critical", "high"]),
       supabase.from("controls").select("*"),
-      supabase.from("obligations").select("id", { count: "exact", head: true }),
-      supabase.from("alerts").select("id", { count: "exact", head: true }).gte("created_at", monthAgo),
       supabase.from("policies").select("id", { count: "exact", head: true }).eq("status", "approved"),
-    ]).then(([t, gOpen, gUrgent, c, o, a, p]) => {
+      fetchOrgCounts(supabase),
+    ]).then(([t, c, p, oc]) => {
       setTasks((t.data as Task[]) ?? []);
-      setGapCounts({ open: gOpen.count ?? 0, urgent: gUrgent.count ?? 0 });
       setControls((c.data as Control[]) ?? []);
-      setObligationCount(o.count ?? 0);
-      setAlerts30d(a.count ?? 0);
+      setGapCounts({ open: oc.gapsOpen, urgent: oc.gapsUrgentOpen });
+      setObligationCount(oc.obligations);
+      setAlerts30d(oc.alerts30d);
       setPoliciesApproved(p.count ?? 0);
       setLoading(false);
     });

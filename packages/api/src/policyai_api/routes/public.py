@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from policyai_extraction.notifications import send_email_to
 from policyai_graph.models import RawDocument
 from policyai_graph.models_app import MonitoringSource
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -185,8 +185,15 @@ async def _send_welcome(email: str, company: str) -> None:
 class SignupRequest(BaseModel):
     email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=160)
     # Supabase (bcrypt) truncates at 72 bytes, so cap the input there too.
-    password: str = Field(min_length=8, max_length=72)
+    password: str = Field(min_length=10, max_length=72)
     company: str | None = Field(default=None, max_length=120)
+
+    @field_validator("password")
+    @classmethod
+    def _password_strength(cls, v: str) -> str:
+        if not (re.search(r"[a-zA-Z]", v) and re.search(r"\d", v)):
+            raise ValueError("password must contain both letters and numbers")
+        return v
 
 
 class SignupResponse(BaseModel):

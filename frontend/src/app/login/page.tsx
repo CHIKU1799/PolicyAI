@@ -240,6 +240,10 @@ export default function LoginPage() {
     setCanResend(false);
     try {
       if (mode === "signup") {
+        if (password.length < 10 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+          setMsg("Use at least 10 characters with both letters and numbers for your password.");
+          return;
+        }
         // Preferred path: the worker creates the account pre-confirmed (no
         // confirmation email involved, Supabase's built-in SMTP drops them)
         // and we sign straight in. company_name lands in raw_user_meta_data
