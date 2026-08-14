@@ -51,3 +51,28 @@ export async function workerFetch(path: string, init: RequestInit = {}): Promise
   }
   return fetch(`${WORKER_URL}${path}`, { ...init, headers });
 }
+
+// Cached per session, like useOrgRole: the org never changes mid-session.
+let _orgId: string | null | undefined;
+
+/**
+ * The caller's org id (first membership), for stamping org_id on rows the
+ * browser inserts directly (controls, control tests, obligation links). RLS
+ * rejects inserts whose org_id is not one of the caller's orgs.
+ */
+export async function getOrgId(): Promise<string | null> {
+  if (_orgId !== undefined) return _orgId;
+  const supabase = getSupabase();
+  if (!supabase) return (_orgId = null);
+  const { data } = await supabase.auth.getUser();
+  const uid = data.user?.id;
+  if (!uid) return (_orgId = null);
+  const { data: rows } = await supabase
+    .from("memberships")
+    .select("org_id, created_at")
+    .eq("user_id", uid)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  _orgId = (rows?.[0]?.org_id as string | undefined) ?? null;
+  return _orgId;
+}
