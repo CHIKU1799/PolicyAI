@@ -20,6 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { fetchPostureInputs, postureScore } from "@/lib/posture";
 import { LogoMark } from "@/components/Logo";
 import { useOrgRole } from "@/lib/useOrgRole";
 
@@ -69,14 +70,9 @@ export default function Sidebar() {
       .select("user_id")
       .maybeSingle()
       .then(({ data }) => setIsAdmin(!!data));
-    supabase
-      .from("controls")
-      .select("effectiveness")
-      .then(({ data }) => {
-        const rows = (data as { effectiveness: string }[]) ?? [];
-        if (rows.length)
-          setScore(Math.round((rows.filter((r) => r.effectiveness === "effective").length / rows.length) * 100));
-      });
+    fetchPostureInputs(supabase)
+      .then((inputs) => setScore(postureScore(inputs)))
+      .catch(() => {});
   }, []);
 
   async function logout() {

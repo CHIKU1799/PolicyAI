@@ -30,7 +30,6 @@ import {
   PRIORITY_STYLES,
   TASK_COLUMNS,
   type Control,
-  type Gap,
   type Task,
   type TaskStatus,
 } from "@/lib/types";
@@ -39,11 +38,6 @@ interface RosterRow {
   user_id: string;
   email: string | null;
   role: string;
-}
-
-interface ObligationLite {
-  id: string;
-  status: string;
 }
 
 const UNASSIGNED = "__unassigned__";
@@ -61,9 +55,9 @@ export default function WorkflowPage() {
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [gaps, setGaps] = useState<Gap[]>([]);
+  const [gapCounts, setGapCounts] = useState({ open: 0, urgent: 0 });
   const [controls, setControls] = useState<Control[]>([]);
-  const [obligations, setObligations] = useState<ObligationLite[]>([]);
+  const [obligationCount, setObligationCount] = useState(0);
   const [alerts30d, setAlerts30d] = useState(0);
   const [policiesApproved, setPoliciesApproved] = useState(0);
   const [roster, setRoster] = useState<RosterRow[]>([]);
@@ -76,18 +70,25 @@ export default function WorkflowPage() {
       return;
     }
     const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    // Counts come from exact count queries: PostgREST caps plain selects at
+    // 1,000 rows, which silently understates gap numbers at this org's scale.
     Promise.all([
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
-      supabase.from("gaps").select("*"),
+      supabase.from("gaps").select("id", { count: "exact", head: true }).in("status", ["open", "remediating"]),
+      supabase
+        .from("gaps")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["open", "remediating"])
+        .in("severity", ["critical", "high"]),
       supabase.from("controls").select("*"),
-      supabase.from("obligations").select("id,status"),
+      supabase.from("obligations").select("id", { count: "exact", head: true }),
       supabase.from("alerts").select("id", { count: "exact", head: true }).gte("created_at", monthAgo),
       supabase.from("policies").select("id", { count: "exact", head: true }).eq("status", "approved"),
-    ]).then(([t, g, c, o, a, p]) => {
+    ]).then(([t, gOpen, gUrgent, c, o, a, p]) => {
       setTasks((t.data as Task[]) ?? []);
-      setGaps((g.data as Gap[]) ?? []);
+      setGapCounts({ open: gOpen.count ?? 0, urgent: gUrgent.count ?? 0 });
       setControls((c.data as Control[]) ?? []);
-      setObligations((o.data as ObligationLite[]) ?? []);
+      setObligationCount(o.count ?? 0);
       setAlerts30d(a.count ?? 0);
       setPoliciesApproved(p.count ?? 0);
       setLoading(false);
@@ -101,8 +102,6 @@ export default function WorkflowPage() {
   const openTasks = tasks.filter(isOpen);
   const unassigned = openTasks.filter((t) => !t.owner);
   const overdue = openTasks.filter(isOverdue);
-  const openGaps = gaps.filter((g) => g.status === "open" || g.status === "remediating");
-  const urgentGaps = openGaps.filter((g) => g.severity === "critical" || g.severity === "high");
   const effective = controls.filter((c) => c.effectiveness === "effective").length;
   const passRate = controls.length ? Math.round((effective / controls.length) * 100) : null;
 
@@ -169,7 +168,7 @@ export default function WorkflowPage() {
       icon: ShieldAlert,
       step: "2 · STRUCTURE",
       title: "Obligations",
-      value: String(obligations.length),
+      value: String(obligationCount),
       sub: "extracted for your firm",
       href: "/obligations",
     },
@@ -177,10 +176,10 @@ export default function WorkflowPage() {
       icon: TriangleAlert,
       step: "3 · ASSESS",
       title: "Gap analysis",
-      value: String(openGaps.length),
-      sub: `open · ${urgentGaps.length} critical/high`,
+      value: String(gapCounts.open),
+      sub: `open · ${gapCounts.urgent} critical/high`,
       href: "/gaps",
-      alarm: urgentGaps.length > 0,
+      alarm: gapCounts.urgent > 0,
     },
     {
       icon: ListChecks,

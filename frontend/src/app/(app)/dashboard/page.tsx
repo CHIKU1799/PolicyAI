@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { getSupabase, workerFetch } from "@/lib/supabase";
+import { fetchPostureInputs, postureScore, type PostureInputs } from "@/lib/posture";
 import ScanButton from "@/components/ScanButton";
 import PostureImprovement from "@/components/insights/PostureImprovement";
 import { KpiSkeleton, Shimmer } from "@/components/Loading";
@@ -58,6 +59,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [covered, setCovered] = useState<Set<string>>(new Set());
+  const [postureInputs, setPostureInputs] = useState<PostureInputs | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [serverInsights, setServerInsights] = useState<ServerInsight[] | null>(null);
   const [, setReqCoverage] = useState<{ pct: number | null; covered: number; applicable: number } | null>(null);
@@ -93,6 +95,10 @@ export default function DashboardPage() {
       setAlerts((a.data as Alert[]) ?? []);
       setCovered(new Set(((oc.data as { obligation_id: string }[]) ?? []).map((r) => r.obligation_id)));
       setLoadingData(false);
+      // Exact counts for the headline score: row fetches above are capped at
+      // 1,000 rows by PostgREST, which understates gap counts once the org
+      // outgrows that. The sidebar uses the same helper, so both agree.
+      fetchPostureInputs(supabase).then(setPostureInputs).catch(() => {});
     })();
   }, []);
 
@@ -103,8 +109,10 @@ export default function DashboardPage() {
   const coveragePct = obligations.length
     ? Math.round((obligations.filter((o) => covered.has(o.id)).length / obligations.length) * 100)
     : 0;
-  const openGaps = gaps.filter((g) => g.status === "open" || g.status === "remediating").length;
-  const posture = Math.round(0.45 * effectivePct + 0.35 * coveragePct + 0.2 * (obligations.length ? 100 - Math.min(100, (openGaps / obligations.length) * 100) : 100)) || 0;
+  const openGaps = postureInputs?.openGaps ?? gaps.filter((g) => g.status === "open" || g.status === "remediating").length;
+  const posture = postureInputs
+    ? postureScore(postureInputs)
+    : Math.round(0.45 * effectivePct + 0.35 * coveragePct + 0.2 * (obligations.length ? 100 - Math.min(100, (openGaps / obligations.length) * 100) : 100)) || 0;
 
   // --- KPI row: real deltas from created_at / due_date windows. Where a
   // delta is not computable from stored history, the chip is omitted.
@@ -238,7 +246,9 @@ export default function DashboardPage() {
             Posture is <b className="text-[var(--text)]">{posture >= 75 ? "strong" : "developing"}</b>:{" "}
             <b className="text-[var(--text)]">{openObligations} active obligations</b>{" "}
             mapped, {openGaps} open {openGaps === 1 ? "gap" : "gaps"} to remediate, and{" "}
-            {controls.filter((c) => c.effectiveness === "untested").length} controls still untested.
+            {controls.filter((c) => c.effectiveness === "untested").length}{" "}
+            {controls.filter((c) => c.effectiveness === "untested").length === 1 ? "control" : "controls"}{" "}
+            still untested.
           </div>
           <div className="flex flex-col border-t border-[var(--hairline)]">
             {priority.slice(0, 4).map((p) => (
