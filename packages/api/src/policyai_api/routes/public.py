@@ -13,7 +13,8 @@ import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from policyai_extraction.notifications import send_email_to
 from policyai_graph.models import RawDocument
 from policyai_graph.models_app import MonitoringSource
 from pydantic import BaseModel, Field
@@ -152,6 +153,35 @@ async def landing_intel(session: AsyncSession = Depends(get_session)) -> IntelRe
     return await _intel_payload("intel", session)
 
 
+def _web_base() -> str:
+    """Best guess at the web app URL for links in transactional emails."""
+    origins = os.getenv("FRONTEND_ORIGINS", "")
+    for origin in origins.split(","):
+        origin = origin.strip().rstrip("/")
+        if origin.startswith("https://"):
+            return origin
+    return "https://policyai-web-rgry0.sevalla.app"
+
+
+async def _send_welcome(email: str, company: str) -> None:
+    """Best-effort welcome mail; a no-op until RESEND_API_KEY is configured,
+    and delivery-limited until a sender domain is verified in Resend."""
+    base = _web_base()
+    who = company or "your firm"
+    await send_email_to(
+        email,
+        "Welcome to PolicyAI",
+        (
+            f"<p style='font-size:15px'>Your PolicyAI workspace for <b>{who}</b> is ready.</p>"
+            f"<p style='font-size:14px'>Sign in at <a href='{base}/login'>{base}/login</a> "
+            "to see your compliance dashboard, obligations and tasks.</p>"
+            "<hr style='border:none;border-top:1px solid #e2e8f0'>"
+            "<p style='font-size:12px;color:#94a3b8'>PolicyAI, continuous regulatory "
+            "monitoring for India</p>"
+        ),
+    )
+
+
 class SignupRequest(BaseModel):
     email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=160)
     # Supabase (bcrypt) truncates at 72 bytes, so cap the input there too.
@@ -174,7 +204,7 @@ class SignupResponse(BaseModel):
     response_model=SignupResponse,
     dependencies=[Depends(rate_limited("signup"))],
 )
-async def public_signup(req: SignupRequest) -> SignupResponse:
+async def public_signup(req: SignupRequest, background: BackgroundTasks) -> SignupResponse:
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
@@ -194,6 +224,7 @@ async def public_signup(req: SignupRequest) -> SignupResponse:
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="could not reach auth service") from exc
     if resp.status_code in (200, 201):
+        background.add_task(_send_welcome, req.email.strip().lower(), (req.company or "").strip())
         return SignupResponse(ok=True)
     detail = ""
     try:

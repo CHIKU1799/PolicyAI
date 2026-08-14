@@ -107,7 +107,23 @@ automatically.
      Resend) under Authentication -> Emails -> SMTP settings.
    - A stuck unconfirmed user can be unblocked from Authentication ->
      Users -> "..." -> Confirm email.
-5. Check `/ready` on the API, then sign in on the web app.
+   - NOTE (2026-08-14): signup no longer depends on these emails. The login
+     page calls the worker's `POST /public/signup`, which creates the user
+     pre-confirmed via the service-role admin API and signs straight in;
+     the confirmation-email flow is only the fallback when that endpoint is
+     unavailable. Email verification can be reinstated once real SMTP works.
+5. Email via Resend (account: nishantkumar1799@gmail.com). Set
+   `RESEND_API_KEY` and `ALERT_EMAIL_TO` on the API app: enables ops mails
+   for contact-form submissions and obligation/scan alerts, plus a welcome
+   mail on signup. `policyai.com` is added as a Resend domain; until its
+   DNS records (DKIM TXT `resend._domainkey`, MX + TXT on `send`) are added
+   at the DNS host and verified, Resend only delivers to the account owner,
+   so keep the default `onboarding@resend.dev` sender. After verification:
+   - set `ALERT_EMAIL_FROM="PolicyAI <noreply@policyai.com>"` on the API app
+   - configure Supabase custom SMTP (Authentication -> Emails -> SMTP):
+     host `smtp.resend.com`, port `465`, user `resend`, password = the
+     Resend API key, sender `noreply@policyai.com`.
+6. Check `/ready` on the API, then sign in on the web app.
 
 The database is the existing cloud Supabase project (already at Alembic head
 `0013`), so there is nothing to migrate for a fresh Sevalla deploy. For future

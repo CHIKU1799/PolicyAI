@@ -58,6 +58,30 @@ async def send_email(subject: str, html: str) -> bool:
         return False
 
 
+async def send_email_to(recipient: str, subject: str, html: str) -> bool:
+    """Send to an arbitrary recipient (welcome mails etc.), not the ops inbox.
+
+    Needs only RESEND_API_KEY. Until a domain is verified in Resend, the
+    default onboarding@resend.dev sender can only reach the Resend account
+    owner, so failures here are expected and swallowed."""
+    key = os.getenv("RESEND_API_KEY")
+    sender = os.getenv("ALERT_EMAIL_FROM", "PolicyAI <onboarding@resend.dev>")
+    if not key or not recipient:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"from": sender, "to": [recipient], "subject": subject, "html": html},
+            )
+            resp.raise_for_status()
+        return True
+    except Exception as exc:  # noqa: BLE001 - notifications must never break the caller
+        print(f"[notifications] email to user failed: {exc}")
+        return False
+
+
 async def notify_alert(kind: str, message: str, *, detail: str | None = None) -> bool:
     """Email an alert if its kind is enabled. Returns False (no-op) otherwise."""
     if not should_email(kind):
