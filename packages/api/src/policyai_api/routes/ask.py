@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections import OrderedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -35,6 +37,36 @@ class AskResponse(BaseModel):
     citations: list[Citation]
 
 
+# Answer memo: the same question in the same org within the TTL replays the
+# stored answer at zero LLM spend. Biggest win on the public demo org, where
+# visitors ask the seeded example questions over and over. Short TTL keeps the
+# staleness window smaller than the data's own change cadence.
+_ANSWER_TTL = 300.0
+_ANSWER_MAX = 512
+_answers: OrderedDict[tuple[str, str], tuple[float, dict]] = OrderedDict()
+
+
+def _answer_key(org_id: UUID, question: str) -> tuple[str, str]:
+    return (str(org_id), " ".join(question.lower().split()))
+
+
+def _answer_get(org_id: UUID, question: str) -> dict | None:
+    key = _answer_key(org_id, question)
+    hit = _answers.get(key)
+    if hit and time.monotonic() - hit[0] < _ANSWER_TTL:
+        _answers.move_to_end(key)
+        return hit[1]
+    return None
+
+
+def _answer_put(org_id: UUID, question: str, result: dict) -> None:
+    key = _answer_key(org_id, question)
+    _answers[key] = (time.monotonic(), result)
+    _answers.move_to_end(key)
+    while len(_answers) > _ANSWER_MAX:
+        _answers.popitem(last=False)
+
+
 # /ask and /ask/stream share one budget (scope "ask"): 5/min anonymous (the
 # demo org must not become a free LLM proxy), 30/min authenticated.
 @router.post("", response_model=AskResponse, dependencies=[Depends(rate_limited("ask"))])
@@ -46,13 +78,18 @@ async def ask_policyai(
 ) -> AskResponse:
     from fastapi import HTTPException
 
+    org_id = effective_org(principal, req.org_id)
+    cached = _answer_get(org_id, req.question)
+    if cached:
+        return AskResponse(answer=cached["answer"], citations=cached["citations"])
     try:
-        result = await ask(session, req.question, llm, org_id=effective_org(principal, req.org_id))
+        result = await ask(session, req.question, llm, org_id=org_id)
     except Exception as exc:  # noqa: BLE001 - surface provider errors as a clean 502
         # An unhandled exception would bypass CORS middleware and reach the
         # browser as an opaque network failure; a proper HTTPException keeps
         # the actual message (rate limit, provider outage) visible in the UI.
         raise HTTPException(502, f"LLM provider error: {str(exc)[:300]}") from exc
+    _answer_put(org_id, req.question, result)
     return AskResponse(answer=result["answer"], citations=result["citations"])
 
 
@@ -66,14 +103,32 @@ async def ask_policyai_stream(
     """Server-Sent Events: stream answer tokens as they're generated, then citations.
     The session dependency stays open until the generator finishes."""
 
+    org_id = effective_org(principal, req.org_id)
+
     async def event_gen():
+        cached = _answer_get(org_id, req.question)
+        if cached:
+            # Replay the stored answer as one token event: same client protocol,
+            # zero LLM spend, instant.
+            yield f"data: {json.dumps({'type': 'token', 'text': cached['answer']})}\n\n"
+            yield f"data: {json.dumps({'type': 'citations', 'citations': cached['citations']})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+        parts: list[str] = []
+        citations: list = []
+        failed = False
         try:
-            async for event in ask_stream(
-                session, req.question, llm, org_id=effective_org(principal, req.org_id)
-            ):
+            async for event in ask_stream(session, req.question, llm, org_id=org_id):
+                if event.get("type") == "token":
+                    parts.append(event.get("text") or "")
+                elif event.get("type") == "citations":
+                    citations = event.get("citations") or []
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # noqa: BLE001 - surface as a stream event, don't 500
+            failed = True
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)[:300]})}\n\n"
+        if not failed and parts:
+            _answer_put(org_id, req.question, {"answer": "".join(parts), "citations": citations})
 
     return StreamingResponse(
         event_gen(),

@@ -38,6 +38,12 @@ PRICING: dict[str, tuple[float, float]] = {
 
 MODEL_EXTRACTION = os.getenv("ANTHROPIC_MODEL_EXTRACTION", "claude-sonnet-4-6")
 MODEL_MAPPING = os.getenv("ANTHROPIC_MODEL_MAPPING", "claude-opus-4-8")
+# Copilot models. Sonnet answers as well as Opus for grounded tool-RAG at ~1/5
+# the price, and its 1024-token cache minimum means the system+tools prefix
+# actually caches (Opus needs 4096 and silently skipped). Simple data lookups
+# route to Haiku, another ~3x cheaper.
+MODEL_ASK = os.getenv("ANTHROPIC_MODEL_ASK", "claude-sonnet-4-6")
+MODEL_ASK_FAST = os.getenv("ANTHROPIC_MODEL_ASK_FAST", "claude-haiku-4-5")
 
 # Anthropic prompt-cache pricing relative to the model's input rate: reads are
 # ~10% of a fresh input token, writes carry a 25% premium.
