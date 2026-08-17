@@ -39,7 +39,7 @@ _origins = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:3
 # the product domain don't require an env edit per deploy.
 _origin_regex = os.getenv(
     "FRONTEND_ORIGIN_REGEX",
-    r"https://([a-z0-9-]+\.sevalla\.app|(www\.)?policyai\.com)",
+    r"https://([a-z0-9-]+\.sevalla\.app|[a-z0-9-]+\.vercel\.app|(www\.)?policyai\.com)",
 )
 app.add_middleware(
     CORSMiddleware,
