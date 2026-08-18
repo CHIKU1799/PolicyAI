@@ -12,6 +12,7 @@ import { TableSkeleton } from "@/components/Loading";
 export default function GapsPage() {
   const [configured, setConfigured] = useState(true);
   const [gaps, setGaps] = useState<Gap[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [coverage, setCoverage] = useState<{ pct: number | null; covered: number; applicable: number; uncovered: number } | null>(null);
 
@@ -36,6 +37,18 @@ export default function GapsPage() {
         setGaps((data as Gap[]) ?? []);
         setLoading(false);
       });
+    // Column headers use exact counts: the row fetch above is capped at
+    // 1,000 by PostgREST, so counting fetched cards understates every column
+    // once the register outgrows that.
+    Promise.all(
+      GAP_COLUMNS.map(async (col) => {
+        const { count } = await supabase
+          .from("gaps")
+          .select("id", { count: "exact", head: true })
+          .eq("status", col.key);
+        return [col.key, count ?? 0] as [string, number];
+      }),
+    ).then((pairs) => setStatusCounts(Object.fromEntries(pairs)));
   }, []);
 
   async function move(gap: Gap, status: GapStatus) {
@@ -104,16 +117,18 @@ export default function GapsPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {GAP_COLUMNS.map((col) => {
           const items = gaps.filter((g) => g.status === col.key);
+          const total = statusCounts?.[col.key] ?? items.length;
+          const shown = items.slice(0, 100);
           return (
             <div key={col.key} className="flex flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="text-sm font-semibold text-slate-700">{col.label}</span>
                 <span className="rounded-full bg-slate-200 px-2 text-xs text-slate-600">
-                  {items.length}
+                  {total}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
-                {items.map((g) => (
+                {shown.map((g) => (
                   <div key={g.id} className="group card p-3">
                     <div className="flex items-center justify-between gap-2">
                       <Badge className={SEVERITY_STYLES[g.severity]}>{g.severity}</Badge>
@@ -151,6 +166,11 @@ export default function GapsPage() {
                     </select>
                   </div>
                 ))}
+                {total > shown.length && (
+                  <div className="rounded-lg border border-dashed border-[var(--border)] py-2.5 text-center text-xs text-[var(--muted)]">
+                    Showing the latest {shown.length} of {total}. Export the register for the full list.
+                  </div>
+                )}
                 {items.length === 0 && (
                   <div className="rounded-lg border border-dashed border-[var(--border)] py-6 text-center text-xs text-[var(--muted)]">
                     Nothing here

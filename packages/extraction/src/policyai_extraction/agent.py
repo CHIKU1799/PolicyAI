@@ -15,6 +15,7 @@ to the source — the auditability compliance teams need.
 from __future__ import annotations
 
 import json
+import re
 from uuid import UUID
 
 from policyai_graph.models import Node, RawDocument
@@ -30,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from policyai_extraction import rerank
 from policyai_extraction.embeddings import embed_text
-from policyai_extraction.llm import MODEL_MAPPING, LLMClient
+from policyai_extraction.llm import MODEL_ASK, MODEL_ASK_FAST, LLMClient
 
 SYSTEM = (
     "You are PolicyAI, a regulatory-compliance analyst for Indian financial-sector "
@@ -135,6 +136,60 @@ TOOLS = [
 ]
 
 
+# Regulatory interpretation needs the stronger model; pure org-data lookups
+# ("how many tasks are open", "list overdue obligations") do not. Route to the
+# fast model only when the question looks like a lookup AND has none of the
+# interpretation markers; when unsure, take the stronger model.
+_LOOKUP_RE = re.compile(
+    r"\b(how many|count|list|show|which|overdue|due|open|pending|unassigned|status)\b.*"
+    r"\b(task|obligation|gap|control|deadline|alert)s?\b|"
+    r"\b(task|obligation|gap|control|deadline|alert)s?\b.*"
+    r"\b(how many|count|list|show|overdue|due|open|pending|unassigned|status)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_INTERPRET_RE = re.compile(
+    r"\b(why|should|must we|can we|do we need|require|comply|complian|apply|applie|"
+    r"impact|explain|mean|interpret|compare|difference|penalt|risk|what does|how do)\b",
+    re.IGNORECASE,
+)
+
+
+def pick_ask_model(question: str) -> str:
+    if _LOOKUP_RE.search(question) and not _INTERPRET_RE.search(question):
+        return MODEL_ASK_FAST
+    return MODEL_ASK
+
+
+def _best_window(text: str, query: str, width: int) -> str:
+    """The `width`-char slice of `text` densest in query terms, instead of the
+    head of the document (usually letterhead and boilerplate). Cheap: one pass
+    over term hit positions."""
+    if len(text) <= width:
+        return text
+    terms = [t for t in re.findall(r"[a-z0-9]{4,}", query.lower())]
+    if not terms:
+        return text[:width]
+    lower = text.lower()
+    hits: list[int] = []
+    for t in terms:
+        start = 0
+        while (i := lower.find(t, start)) != -1:
+            hits.append(i)
+            start = i + 1
+    if not hits:
+        return text[:width]
+    hits.sort()
+    # Best window = the one covering the most hits.
+    best_start, best_n, j = 0, 0, 0
+    for i, h in enumerate(hits):
+        while hits[j] < h - width:
+            j += 1
+        if i - j + 1 > best_n:
+            best_n, best_start = i - j + 1, hits[j]
+    start = max(0, min(best_start - 80, len(text) - width))
+    return ("…" if start > 0 else "") + text[start : start + width]
+
+
 def _rrf(ranked_lists: list[list], *, k: int = 60) -> list:
     """Reciprocal-rank fusion — merge several ranked id lists into one order.
     A doc that ranks well in either the vector or the keyword list floats up."""
@@ -229,7 +284,7 @@ class _Tools:
         rows = [by_id[i] for i in fused_ids] or vec_rows
         if rerank.is_enabled() and len(rows) > 1:
             order = await rerank.rerank(
-                query, [(r.raw_text or "")[:1500] for r in rows], top_k=want
+                query, [_best_window(r.raw_text or "", query, 1500) for r in rows], top_k=want
             )
             rows = [rows[i] for i in order]
         else:
@@ -244,7 +299,7 @@ class _Tools:
                     "title": r.title,
                     "source": r.source,
                     "published_date": str(r.published_date) if r.published_date else None,
-                    "snippet": (r.raw_text or "")[:600],
+                    "snippet": _best_window(r.raw_text or "", query, 600),
                 }
             )
         return json.dumps(results)
@@ -255,9 +310,13 @@ class _Tools:
             stmt = stmt.where(Obligation.status == status)
         if severity:
             stmt = stmt.where(Obligation.severity == severity)
+        total = await self.session.scalar(select(func.count()).select_from(stmt.subquery()))
         rows = (await self.session.execute(stmt.limit(min(limit, 50)))).scalars().all()
         return json.dumps(
-            [
+            {
+                "total_matching": total,
+                "note": f"sample of {len(rows)}; use total_matching for any counts",
+                "sample": [
                 {
                     "title": o.title,
                     "summary": o.summary,
@@ -272,7 +331,8 @@ class _Tools:
                     "gap_analysis": o.gap_analysis,
                 }
                 for o in rows
-            ]
+                ],
+            }
         )
 
     async def _search_requirements(self, query: str, requirement_type, limit) -> str:
@@ -311,21 +371,51 @@ class _Tools:
         return json.dumps(results)
 
     async def _query_tasks(self, status, limit) -> str:
-        stmt = select(Task).where(Task.org_id == self.org_id)
+        # True totals alongside the capped sample: without them the model
+        # counts the LIMITed list and states it as the total ("20 tasks open"
+        # when there are 480).
+        base = select(Task).where(Task.org_id == self.org_id)
         if status:
-            stmt = stmt.where(Task.status == status)
-        rows = (await self.session.execute(stmt.limit(min(limit, 50)))).scalars().all()
+            base = base.where(Task.status == status)
+        total = await self.session.scalar(
+            select(func.count()).select_from(base.subquery())
+        )
+        by_status = (
+            await self.session.execute(
+                select(Task.status, func.count())
+                .where(Task.org_id == self.org_id)
+                .group_by(Task.status)
+            )
+        ).all()
+        overdue = await self.session.scalar(
+            select(func.count()).where(
+                Task.org_id == self.org_id,
+                Task.status != "done",
+                Task.due_date.is_not(None),
+                Task.due_date < func.current_date(),
+            )
+        )
+        rows = (await self.session.execute(base.limit(min(limit, 50)))).scalars().all()
         return json.dumps(
-            [
-                {
-                    "title": t.title,
-                    "owner": t.owner,
-                    "due_date": str(t.due_date) if t.due_date else None,
-                    "priority": t.priority,
-                    "status": t.status,
-                }
-                for t in rows
-            ]
+            {
+                "total_matching": total,
+                "counts_by_status": {s: c for s, c in by_status},
+                "overdue_open_tasks": overdue,
+                "note": (
+                    f"sample of {len(rows)} tasks; use total_matching and "
+                    "counts_by_status for any counts"
+                ),
+                "sample": [
+                    {
+                        "title": t.title,
+                        "owner": t.owner,
+                        "due_date": str(t.due_date) if t.due_date else None,
+                        "priority": t.priority,
+                        "status": t.status,
+                    }
+                    for t in rows
+                ],
+            }
         )
 
     async def _get_insights(self) -> str:
@@ -379,7 +469,7 @@ async def ask(
         messages=[{"role": "user", "content": question}],
         tools=TOOLS,
         tool_runner=tools.run,
-        model=MODEL_MAPPING,
+        model=pick_ask_model(question),
     )
     return {"answer": answer, "citations": tools.citations}
 
@@ -400,7 +490,7 @@ async def ask_stream(
         messages=[{"role": "user", "content": question}],
         tools=TOOLS,
         tool_runner=tools.run,
-        model=MODEL_MAPPING,
+        model=pick_ask_model(question),
     ):
         if delta:
             yield {"type": "token", "text": delta}

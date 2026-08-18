@@ -59,10 +59,51 @@ class RBIPressFeed(FeedScraper):
 
 
 class PIBFeed(FeedScraper):
-    """Press Information Bureau — cross-ministry policy announcements (incl. MCA)."""
+    """Press Information Bureau — cross-ministry policy announcements (incl. MCA).
+
+    PIB is a firehose of general government PR (ceremonial addresses, MoUs,
+    internship notices, Hindi duplicates of everything), so unlike the
+    regulator feeds it MUST be gated: only finance/regulatory items are
+    ingested, or the Horizon feed drowns in noise and every junk item costs
+    an extraction + mapping LLM call downstream."""
 
     scraper_kind = "pib_rss"
     regulator_key = "pib"
+    title_include = (
+        "rbi",
+        "reserve bank",
+        "sebi",
+        "irdai",
+        "insurance",
+        "nbfc",
+        "bank",
+        "finance",
+        "fiscal",
+        "tax",
+        "gst",
+        "budget",
+        "microfinance",
+        "digital lending",
+        "fintech",
+        "securities",
+        "pension",
+        "pfrda",
+        "mca",
+        "corporate affairs",
+        "companies act",
+        "pmla",
+        "money laundering",
+        "fema",
+        "credit",
+        "loan",
+        "mutual fund",
+        "capital market",
+        "economic",
+        "currency",
+        "payment",
+        "upi",
+        "cyber",
+    )
 
 
 class CBICFeed(FeedScraper):

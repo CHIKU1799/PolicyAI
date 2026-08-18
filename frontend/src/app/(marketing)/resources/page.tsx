@@ -111,6 +111,30 @@ export default function ResourcesPage() {
             </div>
           </Link>
 
+          {/* Walkthrough guide card. */}
+          <Link
+            href="/blog/platform-walkthrough"
+            className="anim-rise group flex flex-col justify-between gap-8 rounded-[20px] border bg-white p-6 no-underline transition-shadow hover:shadow-[0_14px_30px_-14px_rgba(17,18,27,.25)] md:p-7"
+            style={{ borderColor: LINE }}
+          >
+            <div>
+              <span className="mono text-[10.5px] font-semibold tracking-[.16em]" style={{ color: ACCENT }}>
+                GUIDE
+              </span>
+              <h2 className="serif mb-0 mt-2.5 text-[26px] font-medium leading-[1.15] tracking-[-0.02em]" style={{ color: INK }}>
+                The complete platform walkthrough
+              </h2>
+              <p className="mb-0 mt-3 max-w-[52ch] text-[13.5px] leading-relaxed" style={{ color: BODY }}>
+                Every screen in the order a compliance team actually uses it: sign up, watch the
+                regulators, extract obligations, close gaps, test controls, and prove it all. Real
+                screenshots from a live workspace.
+              </p>
+            </div>
+            <span className="text-[13.5px] font-semibold transition-transform group-hover:translate-x-1" style={{ color: ACCENT }}>
+              Read the walkthrough →
+            </span>
+          </Link>
+
           {/* Blog card (the post that exists). */}
           <Link
             href="/blog/copilot-impact-assessments"

@@ -53,7 +53,7 @@ export const NAV: {
     label: "Resources",
     href: "/resources",
     items: [
-      { label: "Blog", sub: "Copilot now drafts impact assessments", href: "/blog/copilot-impact-assessments" },
+      { label: "Blog", sub: "The complete platform walkthrough", href: "/blog/platform-walkthrough" },
       { label: "Documentation", sub: "Architecture, deploys, mapping", href: "/resources#docs" },
       { label: "Changelog", sub: "What shipped recently", href: "/resources#changelog" },
       { label: "System status", sub: "Operator health checks", href: "/resources#status" },

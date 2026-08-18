@@ -15,6 +15,7 @@ import {
 export default function TasksPage() {
   const [configured, setConfigured] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,6 +32,16 @@ export default function TasksPage() {
         setTasks((data as Task[]) ?? []);
         setLoading(false);
       });
+    // Exact per-column counts: the row fetch is capped at 1,000 by PostgREST.
+    Promise.all(
+      TASK_COLUMNS.map(async (col) => {
+        const { count } = await supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("status", col.key);
+        return [col.key, count ?? 0] as [string, number];
+      }),
+    ).then((pairs) => setStatusCounts(Object.fromEntries(pairs)));
   }, []);
 
   async function move(task: Task, status: TaskStatus) {
@@ -61,16 +72,18 @@ export default function TasksPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {TASK_COLUMNS.map((col) => {
           const items = tasks.filter((t) => t.status === col.key);
+          const total = statusCounts?.[col.key] ?? items.length;
+          const shown = items.slice(0, 100);
           return (
             <div key={col.key} className="flex flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="text-sm font-semibold text-slate-700">{col.label}</span>
                 <span className="rounded-full bg-slate-200 px-2 text-xs text-slate-600">
-                  {items.length}
+                  {total}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
-                {items.map((t) => (
+                {shown.map((t) => (
                   <div key={t.id} className="card p-3">
                     <div className="text-sm font-medium text-slate-800">{t.title}</div>
                     {t.description && (
@@ -102,6 +115,11 @@ export default function TasksPage() {
                     </select>
                   </div>
                 ))}
+                {total > shown.length && (
+                  <div className="rounded-lg border border-dashed border-[var(--border)] py-2.5 text-center text-xs text-[var(--muted)]">
+                    Showing the latest {shown.length} of {total}. Use the Workflow page to bulk-assign.
+                  </div>
+                )}
                 {items.length === 0 && (
                   <div className="rounded-lg border border-dashed border-[var(--border)] py-6 text-center text-xs text-[var(--muted)]">
                     Nothing here

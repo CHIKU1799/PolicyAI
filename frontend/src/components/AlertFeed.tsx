@@ -14,9 +14,12 @@ export default function AlertFeed() {
     const supabase = getSupabase();
     if (!supabase) return;
 
+    // scan_failed is operator noise (a regulator site being down is not the
+    // customer's problem); it stays in the DB for ops but never renders here.
     supabase
       .from("alerts")
       .select("*")
+      .neq("kind", "scan_failed")
       .order("created_at", { ascending: false })
       .limit(20)
       .then(({ data }) => setAlerts((data as Alert[]) ?? []));

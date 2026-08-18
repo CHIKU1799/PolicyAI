@@ -9,7 +9,7 @@ import {
   ShieldAlert,
   ListChecks,
   BookOpen,
-  Share2,
+  Workflow,
   TriangleAlert,
   ShieldCheck,
   FileText,
@@ -20,13 +20,14 @@ import {
   Users,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { fetchOrgCounts, postureScore } from "@/lib/metrics";
 import { LogoMark } from "@/components/Logo";
 import { useOrgRole } from "@/lib/useOrgRole";
 
 const MONITOR = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Live compliance posture at a glance", tour: "nav-dashboard" },
   { href: "/obligations", label: "Obligations", icon: ShieldAlert, hint: "What the regulations require you to do", tour: "nav-obligations" },
-  { href: "/graph", label: "Knowledge Graph", icon: Share2, hint: "Explore how regulations, topics and deadlines connect", tour: "nav-graph" },
+  { href: "/workflow", label: "Workflow", icon: Workflow, hint: "The full journey from circular to audit-ready, and who is doing what", tour: "nav-workflow" },
 ];
 const MANAGE = [
   { href: "/gaps", label: "Gap Analysis", icon: TriangleAlert, hint: "Obligations you are not fully covering yet", tour: "nav-gaps" },
@@ -54,6 +55,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [score, setScore] = useState<number | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const { role, loading: roleLoading } = useOrgRole();
@@ -69,13 +71,19 @@ export default function Sidebar() {
       .select("user_id")
       .maybeSingle()
       .then(({ data }) => setIsAdmin(!!data));
+    fetchOrgCounts(supabase)
+      .then((c) => setScore(postureScore(c)))
+      .catch(() => {});
+    // The caller's own org name (RLS: users read their own memberships/org).
     supabase
-      .from("controls")
-      .select("effectiveness")
+      .from("memberships")
+      .select("org_id, organizations(name)")
+      .order("created_at", { ascending: true })
+      .limit(1)
       .then(({ data }) => {
-        const rows = (data as { effectiveness: string }[]) ?? [];
-        if (rows.length)
-          setScore(Math.round((rows.filter((r) => r.effectiveness === "effective").length / rows.length) * 100));
+        const row = data?.[0] as { organizations?: { name?: string } | { name?: string }[] } | undefined;
+        const org = Array.isArray(row?.organizations) ? row?.organizations[0] : row?.organizations;
+        if (org?.name) setOrgName(org.name);
       });
   }, []);
 
@@ -103,10 +111,10 @@ export default function Sidebar() {
       {/* workspace switcher */}
       <button className="mx-3 mb-1.5 flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-white px-2.5 py-2 text-left shadow-[0_1px_2px_rgba(17,18,27,.04)]">
         <div className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg bg-gradient-to-br from-[#3A3D44] to-[#1A1C22] text-[13px] font-extrabold text-white">
-          D
+          {(orgName ?? "W").charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1 leading-tight">
-          <div className="truncate text-[13px] font-bold text-[#1A1C22]">Demo Microfinance Co.</div>
+          <div className="truncate text-[13px] font-bold text-[#1A1C22]">{orgName ?? "Your workspace"}</div>
           <div className="truncate text-[11px] text-[var(--muted-2)]">Compliance workspace</div>
         </div>
         <ChevronsUpDown size={14} className="flex-none text-[var(--muted-3)]" />

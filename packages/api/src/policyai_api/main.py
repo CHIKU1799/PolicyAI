@@ -20,12 +20,14 @@ from policyai_api.routes import (
     admin,
     ask,
     contact,
+    controls,
     documents,
     graph,
     insights,
     internal,
     org,
     profile,
+    public,
     scan,
     timeline,
 )
@@ -37,7 +39,7 @@ _origins = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:3
 # the product domain don't require an env edit per deploy.
 _origin_regex = os.getenv(
     "FRONTEND_ORIGIN_REGEX",
-    r"https://([a-z0-9-]+\.sevalla\.app|(www\.)?policyai\.com)",
+    r"https://([a-z0-9-]+\.sevalla\.app|[a-z0-9-]+\.vercel\.app|(www\.)?policyai\.com)",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +60,8 @@ app.include_router(insights.router)
 app.include_router(admin.router)
 app.include_router(contact.router)
 app.include_router(org.router)
+app.include_router(public.router)
+app.include_router(controls.router)
 
 
 @app.get("/health")

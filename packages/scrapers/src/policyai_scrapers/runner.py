@@ -149,23 +149,36 @@ async def run_once(*, force: bool = False, map_after: bool | None = None) -> Non
     async with sessionmaker() as session:
         sources = (await session.execute(select(MonitoringSource))).scalars().all()
         due = [s for s in sources if s.enabled and (force or _is_due(s, now))]
-        log.info("%d/%d sources %s", len(due), len(sources), "forced" if force else "due")
-        for source in due:
-            run = await scan_source(session, source, llm)
-            await session.commit()
-            log.info(
-                "%s: %s (%d new / %d found)",
-                source.name,
-                run.status,
-                run.docs_new,
-                run.docs_found,
-            )
-        if map_after:
-            # Turn freshly ingested regulations into obligations/gaps/tasks. The
-            # relevance gate skips regulations that don't apply to the org, so this
-            # only spends on the ones that matter.
-            mapped, skipped = await map_unmapped_in_session(session, llm)
-            log.info("post-scan mapping: mapped=%d skipped=%d", mapped, skipped)
+    log.info("%d/%d sources %s", len(due), len(sources), "forced" if force else "due")
+    # One session PER SOURCE, not per pass: extraction holds the connection idle
+    # through long LLM calls, and when the pooler drops it the poisoned session
+    # used to sink the whole pass (MissingGreenlet cascade). Now a dead
+    # connection costs one source and the next one starts on a fresh session.
+    for source in due:
+        try:
+            async with sessionmaker() as session:
+                source = await session.merge(source)
+                run = await scan_source(session, source, llm)
+                await session.commit()
+                log.info(
+                    "%s: %s (%d new / %d found)",
+                    source.name,
+                    run.status,
+                    run.docs_new,
+                    run.docs_found,
+                )
+        except Exception as exc:  # noqa: BLE001 - a dead connection costs one source only
+            log.warning("pass failed for %s: %s", source.name, str(exc)[:300])
+    if map_after:
+        # Turn freshly ingested regulations into obligations/gaps/tasks. The
+        # relevance gate skips regulations that don't apply to the org, so this
+        # only spends on the ones that matter.
+        try:
+            async with sessionmaker() as session:
+                mapped, skipped = await map_unmapped_in_session(session, llm)
+                log.info("post-scan mapping: mapped=%d skipped=%d", mapped, skipped)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("post-scan mapping failed: %s", str(exc)[:300])
     log.info("LLM cost: %s", llm.cost.summary())
     await llm.aclose()
     await engine.dispose()

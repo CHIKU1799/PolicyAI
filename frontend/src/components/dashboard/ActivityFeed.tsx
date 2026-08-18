@@ -40,7 +40,7 @@ const KIND_ROUTE: Record<string, { href: string; label: string }> = {
   new_regulation: { href: "/obligations", label: "New regulation" },
   new_obligation: { href: "/obligations", label: "New obligation" },
   deadline_approaching: { href: "/tasks", label: "Deadline approaching" },
-  regulation_superseded: { href: "/graph", label: "Superseded" },
+  regulation_superseded: { href: "/obligations", label: "Superseded" },
   policy_conflict: { href: "/gaps", label: "Policy conflict" },
   control_failed: { href: "/controls", label: "Control failed" },
   scan_failed: { href: "/knowledge-base", label: "Scan issue" },

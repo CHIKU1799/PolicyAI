@@ -95,6 +95,7 @@ export default function PostureImprovement() {
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [obls, setObls] = useState<OblRow[]>([]);
   const [links, setLinks] = useState<LinkRow[]>([]);
+  const [exact, setExact] = useState<{ resolved: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(true);
 
@@ -106,21 +107,31 @@ export default function PostureImprovement() {
       return;
     }
     (async () => {
-      const [g, d, o, oc] = await Promise.all([
+      const [g, d, o, oc, rc, tc] = await Promise.all([
+        // Ordered so the (PostgREST-capped) 1,000-row sample is the newest
+        // slice, not an arbitrary one; trends read from this sample while the
+        // headline "resolved of total" uses the exact counts below.
         supabase
           .from("gaps")
-          .select("id, requirement_id, severity, status, coverage_status, created_at, invalidated_at"),
+          .select("id, requirement_id, severity, status, coverage_status, created_at, invalidated_at")
+          .order("created_at", { ascending: false }),
         supabase
           .from("company_documents")
           .select("id, filename, status, uploaded_at")
           .order("uploaded_at", { ascending: false }),
         supabase.from("obligations").select("id, status, created_at, invalidated_at"),
         supabase.from("obligation_controls").select("obligation_id, created_at"),
+        supabase
+          .from("gaps")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["closed", "accepted"]),
+        supabase.from("gaps").select("id", { count: "exact", head: true }),
       ]);
       setGaps((g.data as GapRow[]) ?? []);
       setDocs((d.data as DocRow[]) ?? []);
       setObls((o.data as OblRow[]) ?? []);
       setLinks((oc.data as LinkRow[]) ?? []);
+      setExact({ resolved: rc.count ?? 0, total: tc.count ?? 0 });
       setLoading(false);
     })();
   }, []);
@@ -139,7 +150,7 @@ export default function PostureImprovement() {
   const covDelta =
     covNow.pct !== null && covRef.pct !== null ? covNow.pct - covRef.pct : null;
 
-  const resolvedTotal = gaps.filter(isResolved).length;
+  const resolvedTotal = exact?.resolved ?? gaps.filter(isResolved).length;
   const resolvedOfRef = gaps.filter((g) => ms(g.created_at) <= refTime && isResolved(g)).length;
   const onFileAtRef = gaps.filter((g) => ms(g.created_at) <= refTime).length;
   const newSinceRef = gaps.filter((g) => ms(g.created_at) > refTime);
@@ -263,7 +274,7 @@ export default function PostureImprovement() {
         <DeltaTile
           label="Gaps resolved"
           value={resolvedTotal}
-          sub={`of ${gaps.length} recorded in total`}
+          sub={`of ${exact?.total ?? gaps.length} recorded in total`}
           delta={onFileAtRef > 0 ? resolvedOfRef : null}
           deltaLabel={
             onFileAtRef > 0
